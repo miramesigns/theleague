@@ -9,6 +9,7 @@ import {
   formatLineupRowMeta,
   loadLineupSubmissionContext,
   loadLineupPageState,
+  normalizeLineupInjuryDesignation,
   parseLineupRules,
   resolveRosterPlayerName,
   validateLineupSubmission,
@@ -111,6 +112,10 @@ function makeSchedulePayload() {
       ],
     },
   };
+}
+
+function makeLiveScoringWeekPayload(week = '8') {
+  return { liveScoring: { week } };
 }
 
 function makeRosterPayload() {
@@ -341,6 +346,15 @@ test('parseLineupRules handles the live starters export shape with an exact tota
   ]);
 });
 
+test('normalizeLineupInjuryDesignation exposes only known NFL designations', () => {
+  assert.equal(normalizeLineupInjuryDesignation('Q'), 'Questionable');
+  assert.equal(normalizeLineupInjuryDesignation('Doubtful'), 'Doubtful');
+  assert.equal(normalizeLineupInjuryDesignation('P'), 'Probable');
+  assert.equal(normalizeLineupInjuryDesignation('O'), 'Out');
+  assert.equal(normalizeLineupInjuryDesignation('day-to-day'), null);
+  assert.equal(normalizeLineupInjuryDesignation(null), null);
+});
+
 test('loadLineupPageState resolves the authenticated franchise and preserves leading-zero ids', async () => {
   const originalFetch = globalThis.fetch;
   const baseEnv = { ...process.env };
@@ -373,12 +387,91 @@ test('loadLineupPageState resolves the authenticated franchise and preserves lea
     assert.equal(state.availableWeeks.join(','), '7,8,9');
     assert.equal(state.rows[0].id, '00123');
     assert.equal(typeof state.rows[0].id, 'string');
-    assert.equal(state.rows[0].statusText.toLowerCase().includes('locked'), true);
+    assert.equal(state.rows[0].statusText.toLowerCase().includes('kickoff'), true);
     assert.equal(state.rows[0].projection, 19.5);
     assert.equal(state.rows[0].startPercentage, null);
     assert.equal(state.rows[0].bye, null);
     assert.equal(state.rows[0].team, 'WAS');
     assert.equal(state.rows[0].opponent, 'PHI');
+    const questionable = state.rows.find((row) => row.id === '00345');
+    assert.equal(questionable?.injury, 'Questionable');
+    assert.equal(questionable?.canToggle, true);
+    assert.match(questionable?.statusText ?? '', /Questionable/);
+    assert.match(questionable?.statusText ?? '', /No bye/);
+    assert.match(questionable?.statusText ?? '', /Unlocked/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreEnv(baseEnv);
+  }
+});
+
+test('loadLineupPageState defaults to the live MFL current week instead of schedule metadata', async () => {
+  const originalFetch = globalThis.fetch;
+  const baseEnv = { ...process.env };
+  process.env.MFL_PRIMARY_FRANCHISE_ID = '0004';
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = new URL(String(input));
+    const type = url.searchParams.get('TYPE');
+
+    if (type === 'myleagues') return createJsonResponse(makeMyLeaguesPayload());
+    if (type === 'league') return createJsonResponse(makeLeaguePayload());
+    if (type === 'liveScoring') return createJsonResponse(makeLiveScoringWeekPayload('8'));
+    if (type === 'schedule') return createJsonResponse({ schedule: { currentWeek: '1', week: [{ week: '1' }, { week: '8' }] } });
+    if (type === 'rosters') return createJsonResponse(makeRosterPayload());
+    if (type === 'players') return createJsonResponse(makePlayersPayload());
+    if (type === 'playerRosterStatus') return createJsonResponse(makePlayerStatusPayload());
+    if (type === 'projectedScores') return createJsonResponse(makeProjectedScoresPayload());
+    if (type === 'injuries') return createJsonResponse(makeInjuriesPayload());
+    if (type === 'topStarters') return createJsonResponse(makeTopStartersPayload());
+    if (type === 'nflSchedule') return createJsonResponse(makeNflSchedulePayload());
+
+    return new Response('not found', { status: 404 });
+  }) as typeof fetch;
+
+  try {
+    const state = await loadLineupPageState('session-123');
+
+    assert.equal(state.currentWeek, 8);
+    assert.equal(state.selectedWeek, 8);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreEnv(baseEnv);
+  }
+});
+
+test('loadLineupPageState fixes a benched player after the real NFL kickoff', async () => {
+  const originalFetch = globalThis.fetch;
+  const baseEnv = { ...process.env };
+  process.env.MFL_PRIMARY_FRANCHISE_ID = '0004';
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = new URL(String(input));
+    const type = url.searchParams.get('TYPE');
+
+    if (type === 'myleagues') return createJsonResponse(makeMyLeaguesPayload());
+    if (type === 'league') return createJsonResponse(makeLeaguePayload());
+    if (type === 'liveScoring') return createJsonResponse(makeLiveScoringWeekPayload('8'));
+    if (type === 'schedule') return createJsonResponse(makeSchedulePayload());
+    if (type === 'rosters') return createJsonResponse(makeRosterPayload());
+    if (type === 'players') return createJsonResponse(makePlayersPayload());
+    if (type === 'playerRosterStatus') return createJsonResponse(makePlayerStatusPayload());
+    if (type === 'projectedScores') return createJsonResponse(makeProjectedScoresPayload());
+    if (type === 'injuries') return createJsonResponse(makeInjuriesPayload());
+    if (type === 'topStarters') return createJsonResponse(makeTopStartersPayload());
+    if (type === 'nflSchedule') return createJsonResponse({ nflSchedule: { matchup: [{ kickoff: '1', team: [{ id: 'WAS', isHome: '0', opponent: 'PHI' }, { id: 'PHI', isHome: '1', opponent: 'WAS' }] }] } });
+
+    return new Response('not found', { status: 404 });
+  }) as typeof fetch;
+
+  try {
+    const state = await loadLineupPageState('session-123', '8');
+    const benched = state.rows.find((row) => row.id === '00234');
+
+    assert.equal(benched?.selected, false);
+    assert.equal(benched?.locked, true);
+    assert.equal(benched?.canToggle, false);
+    assert.match(benched?.statusText ?? '', /^Injury unknown · No bye · Locked · Kickoff /);
   } finally {
     globalThis.fetch = originalFetch;
     restoreEnv(baseEnv);
@@ -661,6 +754,41 @@ test('validateLineupSubmission rejects duplicates, roster mismatches, locks, bye
 
   assert.equal(empty.ok, false);
   assert.match(empty.message, /empty lineup/i);
+});
+
+test('validateLineupSubmission rejects newly starting Out but allows removing an already selected Out player', () => {
+  const outBench = {
+    id: '00456', name: 'Tight End Out', position: 'TE', team: 'SEA', rosterStatus: 'B', locked: false,
+    selected: false, bye: null, opponent: null, homeAway: null, kickoffUtc: 1893456000, kickoffLocal: 'Sun 1:00 PM ET',
+    injury: 'Out', projection: null, startPercentage: null, rosterRank: 1, statusText: 'Out · No bye · Unlocked',
+    availability: 'injured', canToggle: false, group: 'TE',
+  } as LineupRosterSnapshot;
+  const outStarter = { ...outBench, rosterStatus: 'S' as const, selected: true, canToggle: true };
+  const shared = {
+    rules: { positions: [], flexSlots: 0, flexEligiblePositions: [], totalMin: 1, totalMax: 1 },
+    rosterPlayerIds: new Set(['00456']),
+    comments: '',
+    clear: false,
+  };
+
+  const rejected = validateLineupSubmission({ ...shared, playersById: new Map([['00456', outBench]]), starters: ['00456'] });
+  assert.equal(rejected.ok, false);
+  assert.match(rejected.message, /Out.*cannot be started/i);
+
+  const removed = validateLineupSubmission({ ...shared, playersById: new Map([['00456', outStarter]]), starters: [] });
+  assert.equal(removed.ok, false);
+  assert.match(removed.message, /empty lineup/i);
+
+  const removedWithOtherStarter = validateLineupSubmission({
+    ...shared,
+    playersById: new Map([
+      ['00456', outStarter],
+      ['00123', { ...outStarter, id: '00123', name: 'Quarterback One', position: 'QB', injury: null, rosterStatus: 'S', selected: true, locked: false, canToggle: true, group: 'QB' } as LineupRosterSnapshot],
+    ]),
+    rosterPlayerIds: new Set(['00123', '00456']),
+    starters: ['00123'],
+  });
+  assert.equal(removedWithOtherStarter.ok, true);
 });
 
 test('POST rejects invalid origin, accidental clears, and sensitive fields stay out of the response', async () => {

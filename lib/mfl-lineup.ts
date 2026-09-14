@@ -17,6 +17,8 @@ export type LineupRules = {
   totalMax: number;
 };
 
+export type LineupInjuryDesignation = 'Questionable' | 'Doubtful' | 'Probable' | 'Out';
+
 export type LineupRosterSnapshot = {
   id: string;
   name: string;
@@ -30,7 +32,7 @@ export type LineupRosterSnapshot = {
   homeAway: 'home' | 'away' | null;
   kickoffUtc: number | null;
   kickoffLocal: string | null;
-  injury: string | null;
+  injury: LineupInjuryDesignation | null;
   projection: number | null;
   startPercentage: number | null;
   rosterRank: number | null;
@@ -312,6 +314,11 @@ function parseScheduleWeeks(schedulePayload: unknown): { currentWeek: number | n
   return { currentWeek, weeks: sortedWeeks };
 }
 
+function parseLiveScoringWeek(payload: unknown): number | null {
+  const liveScoring = toRecord(toRecord(payload)?.liveScoring);
+  return safeInteger(liveScoring?.week);
+}
+
 function parseLeagueFranchises(leaguePayload: unknown): Map<string, string> {
   const league = toRecord(leaguePayload)?.league;
   const leagueRecord = toRecord(league) as JsonRecord | null;
@@ -380,13 +387,22 @@ function parseProjectedScores(payload: unknown): Map<string, number> {
   return result;
 }
 
-function parseInjuries(payload: unknown): Map<string, string> {
+export function normalizeLineupInjuryDesignation(value: unknown): LineupInjuryDesignation | null {
+  const normalized = extractText(value).trim().toLowerCase();
+  if (normalized === 'q' || normalized === 'questionable') return 'Questionable';
+  if (normalized === 'd' || normalized === 'doubtful') return 'Doubtful';
+  if (normalized === 'p' || normalized === 'probable') return 'Probable';
+  if (normalized === 'o' || normalized === 'out') return 'Out';
+  return null;
+}
+
+function parseInjuries(payload: unknown): Map<string, LineupInjuryDesignation> {
   const root = toRecord(payload) as JsonRecord | null;
   const players = toRecords((root?.injuries as JsonRecord | undefined)?.player ?? root?.player);
-  const result = new Map<string, string>();
+  const result = new Map<string, LineupInjuryDesignation>();
   for (const player of players) {
     const id = extractText(player.id);
-    const designation = extractText(player.designation ?? player.injury ?? player.status);
+    const designation = normalizeLineupInjuryDesignation(player.designation ?? player.injury ?? player.status);
     if (id && designation) result.set(id, designation);
   }
   return result;
@@ -608,7 +624,7 @@ function buildRows(args: {
   playersDirectory: Map<string, { name: string; position: string; team: string | null }>;
   rosterStatuses: Map<string, { status: LineupRosterSnapshot['rosterStatus']; locked: boolean }>;
   projectedScores: Map<string, number>;
-  injuries: Map<string, string>;
+  injuries: Map<string, LineupInjuryDesignation>;
   topStarters: Map<string, number>;
   schedule: Map<string, { opponent: string | null; homeAway: 'home' | 'away' | null; kickoffUtc: number | null; kickoffLocal: string | null }>;
   selectedStarterIds: Set<string>;
@@ -627,12 +643,12 @@ function buildRows(args: {
     const injury = args.injuries.get(player.id) ?? null;
     const selected = args.selectedStarterIds.has(player.id) || status.status === 'S';
     const kickoffUtc = game?.kickoffUtc ?? null;
-    const locked = status.locked || Boolean(kickoffUtc !== null && kickoffUtc * 1000 <= Date.now() && selected);
+    const locked = Boolean(kickoffUtc !== null && kickoffUtc * 1000 <= Date.now());
     const byeWeek = team ? args.byeWeeksByTeam.get(team) ?? null : null;
     const isByeWeek = byeWeek !== null && args.selectedWeek !== null && byeWeek === args.selectedWeek;
     const bye = isByeWeek ? 'Bye' : null;
     const availability: LineupRosterSnapshot['availability'] = locked ? 'locked' : bye ? 'bye' : injury ? 'injured' : game ? 'available' : 'unknown';
-    const statusText = locked ? 'Locked' : bye ? 'Bye week' : injury ? `Injury ${injury}` : game?.kickoffLocal ? `Kickoff ${game.kickoffLocal}` : 'Availability unavailable';
+    const statusText = `${injury ?? 'Injury unknown'} · ${bye ?? 'No bye'} · ${locked ? 'Locked' : 'Unlocked'} · Kickoff ${game?.kickoffLocal ?? 'unknown'}`;
 
     rows.push({
       id: player.id,
@@ -653,7 +669,7 @@ function buildRows(args: {
       rosterRank: null,
       statusText,
       availability,
-      canToggle: availability === 'available',
+      canToggle: !locked && !bye && (injury !== 'Out' || selected),
       group: groupPosition(position),
     });
   }
@@ -681,9 +697,10 @@ async function loadLineupPayloads(sessionCookieValue: string | null, selectedWee
     return { ok: false as const, message: 'Sign in to MFL to load your lineup.' };
   }
 
-  const [leagueResponse, scheduleResponse, playersResponse, primaryResolution] = await Promise.all([
+  const [leagueResponse, scheduleResponse, liveScoringResponse, playersResponse, primaryResolution] = await Promise.all([
     fetchMflExport('league', { JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
     fetchMflExport('schedule', { JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
+    fetchMflExport('liveScoring', { JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
     fetchMflExport('players', { JSON: '1' }, { revalidate: 60 * 60 * 24 }),
     resolvePrimaryFranchiseId(sessionCookieValue),
   ]);
@@ -692,9 +709,10 @@ async function loadLineupPayloads(sessionCookieValue: string | null, selectedWee
     return { ok: false as const, message: 'Lineup data could not be loaded.' };
   }
 
-  const [leaguePayload, schedulePayload, playersPayload] = await Promise.all([
+  const [leaguePayload, schedulePayload, liveScoringPayload, playersPayload] = await Promise.all([
     leagueResponse.json().catch(() => null),
     scheduleResponse.json().catch(() => null),
+    liveScoringResponse.ok ? liveScoringResponse.json().catch(() => null) : Promise.resolve(null),
     playersResponse.json().catch(() => null),
   ]);
 
@@ -717,7 +735,7 @@ async function loadLineupPayloads(sessionCookieValue: string | null, selectedWee
     return { ok: false as const, message: `Invalid week selection. Choose a week from ${schedule.weeks[0]} to ${schedule.weeks[schedule.weeks.length - 1]}.` };
   }
 
-  const currentWeek = schedule.currentWeek ?? schedule.weeks[0] ?? null;
+  const currentWeek = parseLiveScoringWeek(liveScoringPayload) ?? schedule.currentWeek ?? schedule.weeks[0] ?? null;
   const selectedWeek = requestedWeek ?? chooseDefaultWeek(currentWeek, schedule.weeks);
   if (selectedWeek === null || !schedule.weeks.includes(selectedWeek)) {
     return { ok: false as const, message: 'Selected week is not available.' };
@@ -901,6 +919,10 @@ export function validateLineupSubmission(
 
     if (snapshot.availability === 'bye') {
       return { ok: false, status: 400, message: `${snapshot.name} is on bye and cannot be started.` };
+    }
+
+    if (snapshot.injury === 'Out' && snapshot.selected !== true) {
+      return { ok: false, status: 400, message: `${snapshot.name} is Out and cannot be started.` };
     }
 
     if (snapshot.locked && snapshot.selected !== true) {

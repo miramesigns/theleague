@@ -3,13 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-const tabs = [
-  { href: '/scores', label: 'Scores' },
-  { href: '/lineup', label: 'Lineup' },
-  { href: '/waivers', label: 'Waivers' },
-  { href: '/trades', label: 'Trades' },
-  { href: '/more', label: 'More' },
-];
+import { primaryTabs } from '@/lib/navigation';
 
 export function BottomTabs() {
   const pathname = usePathname();
@@ -17,7 +11,7 @@ export function BottomTabs() {
   return (
     <div className="bottom-tabs" aria-label="Primary">
       <nav>
-        {tabs.map((tab) => {
+        {primaryTabs.map((tab) => {
           const active = pathname === tab.href || pathname.startsWith(`${tab.href}/`);
 
           return (

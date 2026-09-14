@@ -1,38 +1,80 @@
-import { mockRoster } from '@/lib/mock-data';
+import { getMflSessionCookieValue } from '@/lib/mfl-session';
+import { loadRosterPageState } from '@/lib/mfl-roster';
 
-export default function RosterPage() {
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+function display(value: string | number | null): string {
+  return value === null ? 'Unavailable' : String(value);
+}
+
+export default async function RosterPage() {
+  const state = await loadRosterPageState(await getMflSessionCookieValue());
+
   return (
-    <main className="grid">
+    <main className="grid roster-view">
       <div className="banner">
         <div>
           <div className="eyebrow">Roster</div>
-          <div className="small muted">Current sample roster and projections.</div>
+          <div className="small muted">{state.franchiseName ?? 'Authenticated MFL owner roster'}</div>
         </div>
-        <span className="pill">10-man core</span>
+        <span className="pill">{state.rows.length} players</span>
       </div>
 
-      <section className="panel section">
-        <table className="table">
+      {!state.ok ? <section className="panel section"><p className="muted">{state.message}</p></section> : (
+      <section className="panel section roster-panel">
+        <div className="roster-scroll">
+        <table className="table roster-table">
           <thead>
             <tr>
               <th>Player</th>
-              <th>Pos</th>
-              <th>Team</th>
-              <th>Proj</th>
+              <th>NFL</th>
+              <th>YTD</th>
+              <th>Bye</th>
+              <th>Salary</th>
+              <th>Contract</th>
+              <th>Trade</th>
             </tr>
           </thead>
           <tbody>
-            {mockRoster.map((player) => (
+            {state.rows.map((player) => (
               <tr key={player.id}>
-                <td>{player.name}</td>
-                <td>{player.pos}</td>
-                <td>{player.team}</td>
-                <td>{player.projection.toFixed(1)}</td>
+                <td data-label="Player"><strong>{player.name}</strong><span className="roster-status">{player.status}</span></td>
+                <td data-label="NFL">{display(player.team)} / {display(player.position)}</td>
+                <td data-label="YTD">{display(player.ytdPoints)}</td>
+                <td data-label="Bye">{display(player.byeWeek)}</td>
+                <td data-label="Salary">{display(player.salary)}</td>
+                <td data-label="Contract">{display(player.contractYear)}</td>
+                <td data-label="Trade">{player.tradeAvailability}</td>
               </tr>
             ))}
           </tbody>
         </table>
+        <div className="roster-compact-list" aria-label="Compact roster list">
+          {state.rows.map((player) => (
+            <div key={player.id} className="roster-compact-row">
+              <div className="roster-compact-main">
+                <strong>{player.name}</strong>
+                <span>{display(player.team)} · {display(player.position)} · {player.status}</span>
+              </div>
+              <div className="roster-compact-metrics">
+                <span>YTD {display(player.ytdPoints)}</span>
+                <span>Bye {display(player.byeWeek)}</span>
+                <span>Salary {display(player.salary)}</span>
+                <span>Contract {display(player.contractYear)}</span>
+                <span>Trade {player.tradeAvailability}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        </div>
+        <footer className="roster-footer">
+          <span>{state.summary.rosterCount} rostered</span>
+          <span>YTD total: {display(state.summary.ytdPoints)}</span>
+          <span>Salary total: {display(state.summary.salary)}</span>
+        </footer>
       </section>
+      )}
     </main>
   );
 }

@@ -205,7 +205,8 @@ export function LineupEditor({ state }: { state: LineupPageState }) {
                       <span className={`tag ${selected ? 'live' : 'scheduled'}`} style={{ color: statusTone(row.availability) }}>
                         {selected ? 'Starter' : 'Bench'}
                       </span>
-                      <span className="player-meta">{row.statusText}</span>
+                      <span className="player-meta">{row.injury ? `Injury: ${row.injury}` : 'Injury: unknown'}</span>
+                      <span className="player-meta">{row.bye ? 'Bye' : 'No bye'} · {row.locked ? 'Locked' : 'Unlocked'}</span>
                     </div>
                   </button>
                 );
