@@ -330,6 +330,10 @@ textarea {
   padding-top: 8px;
 }
 
+.matchup-scoreline-away {
+  text-align: right;
+}
+
 .matchup-vs {
   color: var(--muted);
   font-weight: 700;
@@ -815,6 +819,10 @@ textarea {
 
   .matchup-summary-row {
     gap: 4px;
+  }
+
+  .matchup-scoreline-away {
+    text-align: left;
   }
 
   .team-side-score,

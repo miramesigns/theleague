@@ -18,6 +18,13 @@ export async function GET(request: Request) {
   }
 
   const sessionCookieValue = await getMflSessionCookieValue();
+  if (!sessionCookieValue) {
+    return NextResponse.json({ ok: false, message: 'Sign in required.' }, {
+      status: 401,
+      headers: { 'Cache-Control': 'private, no-store, max-age=0, must-revalidate' },
+    });
+  }
+
   const upstream = await fetchMflExport(type, params, { sessionCookieValue, cache: 'no-store' });
   const body = await upstream.text();
 

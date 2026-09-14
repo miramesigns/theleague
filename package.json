@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
-    "test": "node --test --experimental-strip-types tests/mfl-login.test.ts tests/mfl-scores.test.ts tests/mfl-lineup.test.ts tests/player-detail.test.ts"
+    "test": "node --test --experimental-strip-types tests/access-control.test.ts tests/mfl-login.test.ts tests/mfl-scores.test.ts tests/mfl-lineup.test.ts tests/player-detail.test.ts"
   },
   "dependencies": {
     "next": "latest",

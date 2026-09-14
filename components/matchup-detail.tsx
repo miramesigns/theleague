@@ -149,7 +149,7 @@ export function MatchupDetail({ source, message, currentWeek, selectedWeek, matc
             <div className="team-score">{formatScore(matchup.home.score)}</div>
           </div>
           <div className="matchup-vs">vs</div>
-          <div style={{ textAlign: 'right' }}>
+          <div className="matchup-scoreline-team matchup-scoreline-away">
             <div className="small muted">{matchup.away.teamName}</div>
             <div className="team-score">{formatScore(matchup.away.score)}</div>
           </div>
