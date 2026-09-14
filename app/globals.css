@@ -937,6 +937,129 @@ textarea {
   overflow-x: auto;
 }
 
+.standings-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.standings-scroll {
+  overflow-x: auto;
+}
+
+.standings-table {
+  min-width: 1080px;
+  font-variant-numeric: tabular-nums;
+}
+
+.standings-table th,
+.standings-table td {
+  padding: 10px 8px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.standings-table th:first-child,
+.standings-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 190px;
+  text-align: left;
+  background: #101d33;
+}
+
+.standings-table tbody tr.primary > * {
+  background-color: rgba(8, 145, 178, 0.13);
+}
+
+.standings-table tbody tr.primary > :first-child {
+  color: #cffafe;
+}
+
+.standings-cards {
+  display: none;
+}
+
+.standing-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(7, 13, 24, 0.55);
+}
+
+.standing-card.primary {
+  border-color: rgba(34, 211, 238, 0.45);
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.1);
+}
+
+.standing-card-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.standing-rank {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.standing-record {
+  margin-top: 2px;
+  font-size: 1.2rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.standing-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.standing-metrics > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 9px 7px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.standing-metrics > div:nth-child(4n) {
+  border-right: 0;
+}
+
+.standing-metrics > div:nth-last-child(-n + 2) {
+  grid-column: span 2;
+  border-bottom: 0;
+}
+
+.standing-metrics dt {
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.standing-metrics dd {
+  margin: 0;
+  font-size: 0.86rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
 .roster-table {
   min-width: 720px;
 }
@@ -1112,6 +1235,19 @@ textarea {
 
   .roster-compact-list {
     display: grid;
+  }
+
+  .standings-panel {
+    padding: 12px;
+  }
+
+  .standings-scroll {
+    display: none;
+  }
+
+  .standings-cards {
+    display: grid;
+    gap: 10px;
   }
 
   .roster-compact-row {
