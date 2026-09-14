@@ -22,6 +22,6 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|icon.svg|manifest.webmanifest|the-league-2026-championship-belt.png).*)',
+    '/((?!_next/static|_next/image).*)',
   ],
 };
