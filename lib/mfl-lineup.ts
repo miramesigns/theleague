@@ -45,6 +45,7 @@ export type LineupRosterSnapshot = {
   kickoffLocal: string | null;
   injury: LineupInjuryDesignation | null;
   projection: number | null;
+  actualPoints: number | null;
   startPercentage: number | null;
   rosterRank: number | null;
   statusText: string;
@@ -510,14 +511,18 @@ function parseRosterPlayers(payload: unknown): Map<string, { id: string; name: s
   return result;
 }
 
-export function formatLineupRowMeta(row: Pick<LineupRosterSnapshot, 'name' | 'position' | 'team' | 'opponent' | 'homeAway' | 'bye' | 'projection' | 'startPercentage' | 'rosterRank'>): LineupRowMeta {
+export function formatLineupRowMeta(row: Pick<LineupRosterSnapshot, 'name' | 'position' | 'team' | 'opponent' | 'homeAway' | 'bye' | 'projection' | 'actualPoints' | 'startPercentage' | 'rosterRank'>): LineupRowMeta {
   const matchupText = row.bye
     ? 'Bye'
     : row.opponent && row.homeAway
       ? `${row.homeAway === 'home' ? 'vs' : '@'} ${row.opponent}`
       : '-- / --';
   const metrics = [
-    row.projection === null ? null : `Proj ${Number.isInteger(row.projection) ? String(row.projection) : row.projection.toFixed(1)}`,
+    row.actualPoints != null
+      ? `Actual ${Number.isInteger(row.actualPoints) ? String(row.actualPoints) : row.actualPoints.toFixed(1)}`
+      : row.projection === null
+        ? null
+        : `Proj ${Number.isInteger(row.projection) ? String(row.projection) : row.projection.toFixed(1)}`,
     row.rosterRank == null ? null : `Start rank ${row.rosterRank}`,
     row.startPercentage === null ? null : `Start ${Math.round(row.startPercentage)}%`,
   ].filter(Boolean);
@@ -530,6 +535,30 @@ export function formatLineupRowMeta(row: Pick<LineupRosterSnapshot, 'name' | 'po
     compactText,
     ariaLabel: `${row.name}. ${compactText}.`,
   };
+}
+
+function parseActualPlayerScores(payload: unknown): Map<string, { score: number; gameSecondsRemaining: number | null }> {
+  const root = toRecord(payload);
+  const scoring = toRecord(root?.liveScoring ?? root?.weeklyResults);
+  const scores = new Map<string, { score: number; gameSecondsRemaining: number | null }>();
+
+  for (const matchup of toRecords(scoring?.matchup)) {
+    for (const franchise of toRecords(matchup.franchise)) {
+      const playersRoot = toRecord(franchise.players);
+      for (const player of toRecords(playersRoot?.player ?? franchise.player)) {
+        const id = extractText(player.id ?? player.player_id ?? player.playerId);
+        const score = safeNumber(player.score ?? player.points);
+        if (!id || score === null) continue;
+
+        scores.set(id, {
+          score,
+          gameSecondsRemaining: safeNumber(player.gameSecondsRemaining ?? player.game_seconds_remaining),
+        });
+      }
+    }
+  }
+
+  return scores;
 }
 
 export function deriveTeamByeWeeks(scheduleWeeks: Map<number, Set<string>>, regularWeeks: number[]): Map<string, number | null> {
@@ -666,6 +695,7 @@ function buildRows(args: {
   rosterPlayers: Map<string, { id: string; name: string; position: string; team: string | null }>;
   playersDirectory: Map<string, { name: string; position: string; team: string | null }>;
   projectedScores: Map<string, number>;
+  actualScores: Map<string, { score: number; gameSecondsRemaining: number | null }>;
   injuries: Map<string, LineupInjuryDesignation>;
   topStarters: Map<string, number>;
   startRanks: Map<string, number>;
@@ -686,6 +716,8 @@ function buildRows(args: {
     const selected = args.selectedStarterIds.has(player.id);
     const kickoffUtc = game?.kickoffUtc ?? null;
     const locked = Boolean(kickoffUtc !== null && kickoffUtc * 1000 <= Date.now());
+    const actualScore = args.actualScores.get(player.id) ?? null;
+    const hasStarted = actualScore !== null && (locked || (actualScore.gameSecondsRemaining !== null && actualScore.gameSecondsRemaining !== 3600));
     const byeWeek = team ? args.byeWeeksByTeam.get(team) ?? null : null;
     const isByeWeek = byeWeek !== null && args.selectedWeek !== null && byeWeek === args.selectedWeek;
     const bye = isByeWeek ? 'Bye' : null;
@@ -708,6 +740,7 @@ function buildRows(args: {
       kickoffLocal: game?.kickoffLocal ?? null,
       injury,
       projection: args.projectedScores.get(player.id) ?? null,
+      actualPoints: hasStarted ? actualScore.score : null,
       startPercentage: args.topStarters.size > 0 ? args.topStarters.get(player.id) ?? 0 : null,
       rosterRank: args.startRanks.get(player.id) ?? null,
       statusText,
@@ -792,29 +825,40 @@ async function loadLineupPayloads(sessionCookieValue: string | null, selectedWee
     return { ok: false as const, message: 'Lineup data could not be loaded.' };
   }
 
-  const [rosterResponse, weeklyResultsResponse, projectedScoresResponse, injuriesResponse, topStartersResponse] = await Promise.all([
+  const selectedLiveScoringPromise = selectedWeek === currentWeek
+    ? Promise.resolve(null)
+    : fetchMflExport('liveScoring', { W: String(selectedWeek), JSON: '1' }, { sessionCookieValue, cache: 'no-store' });
+
+  const [rosterResponse, weeklyResultsResponse, projectedScoresResponse, injuriesResponse, topStartersResponse, selectedLiveScoringResponse] = await Promise.all([
     fetchMflExport('rosters', { FRANCHISE: franchiseId, W: String(selectedWeek), JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
     fetchMflExport('weeklyResults', { W: String(selectedWeek), JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
     fetchMflExport('projectedScores', { JSON: '1', W: String(selectedWeek) }, { sessionCookieValue, cache: 'no-store' }),
     fetchMflSiteExport('injuries', { JSON: '1', W: String(selectedWeek) }, { revalidate: 5 * 60 }),
     fetchMflSiteExport('topStarters', { JSON: '1', W: String(selectedWeek), COUNT: '5000' }, { revalidate: 5 * 60 }),
+    selectedLiveScoringPromise,
   ]);
 
   if (!rosterResponse.ok || !weeklyResultsResponse.ok) {
     return { ok: false as const, message: 'Lineup data could not be loaded.' };
   }
 
-  const [rosterPayload, weeklyResultsPayload, projectedScoresPayload, injuriesPayload, topStartersPayload, schedulePayloads] = await Promise.all([
+  const [rosterPayload, weeklyResultsPayload, projectedScoresPayload, injuriesPayload, topStartersPayload, selectedLiveScoringPayload, schedulePayloads] = await Promise.all([
     rosterResponse.json().catch(() => null),
     weeklyResultsResponse.json().catch(() => null),
     projectedScoresResponse.json().catch(() => null),
     injuriesResponse.json().catch(() => null),
     topStartersResponse.json().catch(() => null),
+    selectedLiveScoringResponse === null
+      ? Promise.resolve(liveScoringPayload)
+      : selectedLiveScoringResponse.ok
+        ? selectedLiveScoringResponse.json().catch(() => null)
+        : Promise.resolve(null),
     Promise.all(scheduleWeekResponses.map((response) => response.json().catch(() => null))),
   ]);
 
   const rosterPlayers = parseRosterPlayers(rosterPayload);
   const projectedScores = parseProjectedScores(projectedScoresPayload);
+  const actualScores = parseActualPlayerScores(selectedLiveScoringPayload ?? liveScoringPayload);
   const injuries = parseInjuries(injuriesPayload);
   const topStarters = parseTopStarters(topStartersPayload);
   const startRanks = deriveStartRanks(topStarters, playersDirectory);
@@ -844,6 +888,7 @@ async function loadLineupPayloads(sessionCookieValue: string | null, selectedWee
     playersDirectory,
     schedule: scheduleMap,
     projectedScores,
+    actualScores,
     injuries,
     topStarters,
     startRanks,

@@ -114,8 +114,13 @@ function makeSchedulePayload() {
   };
 }
 
-function makeLiveScoringWeekPayload(week = '8') {
-  return { liveScoring: { week } };
+function makeLiveScoringWeekPayload(week = '8', players: Array<Record<string, string>> = []) {
+  return {
+    liveScoring: {
+      week,
+      ...(players.length > 0 ? { matchup: [{ franchise: [{ id: '0004', players: { player: players } }] }] } : {}),
+    },
+  };
 }
 
 function makeRosterPayload() {
@@ -382,6 +387,10 @@ test('loadLineupPageState resolves the authenticated franchise and preserves lea
     if (type === 'myleagues') return createJsonResponse(makeMyLeaguesPayload());
     if (type === 'league') return createJsonResponse(makeLeaguePayload());
     if (type === 'schedule') return createJsonResponse(makeSchedulePayload());
+    if (type === 'liveScoring') return createJsonResponse(makeLiveScoringWeekPayload('8', [
+      { id: '00123', score: '12.4', gameSecondsRemaining: '900' },
+      { id: '00234', score: '0.0', gameSecondsRemaining: '3600' },
+    ]));
     if (type === 'rosters') return createJsonResponse(makeRosterPayload());
     if (type === 'players') return createJsonResponse(makePlayersPayload());
     if (type === 'weeklyResults') return createJsonResponse(makePlayerStatusPayload());
@@ -404,6 +413,8 @@ test('loadLineupPageState resolves the authenticated franchise and preserves lea
     assert.equal(typeof state.rows[0].id, 'string');
     assert.equal(state.rows[0].statusText.toLowerCase().includes('kickoff'), true);
     assert.equal(state.rows[0].projection, 19.5);
+    assert.equal(state.rows[0].actualPoints, 12.4);
+    assert.equal(state.rows.find((row) => row.id === '00234')?.actualPoints, null);
     assert.equal(state.rows[0].startPercentage, 0);
     assert.equal(state.rows[0].rosterRank, 1);
     assert.equal(state.rows[0].selected, true);
@@ -637,12 +648,13 @@ test('formatLineupRowMeta renders matchup, bye, and missing metrics text', () =>
     homeAway: 'home',
     bye: null,
     projection: 19.5,
+    actualPoints: 12.4,
     startPercentage: 73,
     statusText: 'Locked',
     selected: true,
   } as LineupRosterSnapshot);
 
-  assert.equal(liveRow.compactText, 'QB · WAS · vs PHI · Proj 19.5 · Start 73%');
+  assert.equal(liveRow.compactText, 'QB · WAS · vs PHI · Actual 12.4 · Start 73%');
   assert.match(liveRow.ariaLabel, /Quarterback One/);
 
   const byeRow = formatLineupRowMeta({
@@ -654,6 +666,7 @@ test('formatLineupRowMeta renders matchup, bye, and missing metrics text', () =>
     homeAway: null,
     bye: 'Bye',
     projection: null,
+    actualPoints: null,
     startPercentage: null,
     statusText: 'Bye week',
     selected: false,
