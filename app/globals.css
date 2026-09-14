@@ -939,6 +939,11 @@ textarea {
     white-space: nowrap;
   }
 
+  .roster-compact-main span strong {
+    color: var(--text);
+    font-weight: 700;
+  }
+
   .roster-compact-metrics {
     display: flex;
     flex-wrap: wrap;

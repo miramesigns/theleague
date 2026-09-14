@@ -1,5 +1,5 @@
 import { getMflSessionCookieValue } from '@/lib/mfl-session';
-import { loadRosterPageState } from '@/lib/mfl-roster';
+import { formatRosterSalary, loadRosterPageState } from '@/lib/mfl-roster';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -33,7 +33,6 @@ export default async function RosterPage() {
               <th>Bye</th>
               <th>Salary</th>
               <th>Contract</th>
-              <th>Trade</th>
             </tr>
           </thead>
           <tbody>
@@ -43,9 +42,8 @@ export default async function RosterPage() {
                 <td data-label="NFL">{display(player.team)} / {display(player.position)}</td>
                 <td data-label="YTD">{display(player.ytdPoints)}</td>
                 <td data-label="Bye">{display(player.byeWeek)}</td>
-                <td data-label="Salary">{display(player.salary)}</td>
+                <td data-label="Salary">{formatRosterSalary(player.salary)}</td>
                 <td data-label="Contract">{display(player.contractYear)}</td>
-                <td data-label="Trade">{player.tradeAvailability}</td>
               </tr>
             ))}
           </tbody>
@@ -55,14 +53,13 @@ export default async function RosterPage() {
             <div key={player.id} className="roster-compact-row">
               <div className="roster-compact-main">
                 <strong>{player.name}</strong>
-                <span>{display(player.team)} · {display(player.position)} · {player.status}</span>
+                <span><strong>{display(player.team)} · {display(player.position)}</strong></span>
               </div>
               <div className="roster-compact-metrics">
                 <span>YTD {display(player.ytdPoints)}</span>
                 <span>Bye {display(player.byeWeek)}</span>
-                <span>Salary {display(player.salary)}</span>
+                <span>Salary {formatRosterSalary(player.salary)}</span>
                 <span>Contract {display(player.contractYear)}</span>
-                <span>Trade {player.tradeAvailability}</span>
               </div>
             </div>
           ))}
@@ -71,7 +68,7 @@ export default async function RosterPage() {
         <footer className="roster-footer">
           <span>{state.summary.rosterCount} rostered</span>
           <span>YTD total: {display(state.summary.ytdPoints)}</span>
-          <span>Salary total: {display(state.summary.salary)}</span>
+          <span>Salary total: {formatRosterSalary(state.summary.salary)}</span>
         </footer>
       </section>
       )}

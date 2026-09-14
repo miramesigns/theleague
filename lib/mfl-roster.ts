@@ -1,7 +1,12 @@
-import { fetchMflExport } from './mfl.ts';
+import { fetchMflExport, fetchMflSiteExport } from './mfl.ts';
 import { resolvePrimaryFranchiseId } from './mfl-scores.ts';
 
 type RecordValue = Record<string, unknown>;
+
+export type RosterScheduleInputs = {
+  weeks: number[];
+  teamsByWeek: Map<number, Set<string>>;
+};
 
 export type RosterRow = {
   id: string;
@@ -12,7 +17,6 @@ export type RosterRow = {
   byeWeek: number | null;
   salary: number | null;
   contractYear: number | null;
-  tradeAvailability: 'Available' | 'Not listed' | 'Unavailable';
   status: string;
 };
 
@@ -32,7 +36,7 @@ type RosterPayloads = {
   players: unknown;
   scores: unknown;
   salaries: unknown;
-  tradeBait: unknown;
+  schedule?: RosterScheduleInputs | null;
 };
 
 function record(value: unknown): RecordValue | null {
@@ -93,13 +97,6 @@ function exportEntries(payload: unknown, roots: string[]): RecordValue[] {
   return [];
 }
 
-function hasExportShape(payload: unknown, key: string): boolean {
-  const current = record(payload);
-  if (!current) return false;
-  if (current[key] !== undefined) return true;
-  return Object.values(current).some((nested) => hasExportShape(nested, key));
-}
-
 function idOf(entry: RecordValue): string {
   return text(entry.id ?? entry.player_id ?? entry.playerId);
 }
@@ -130,17 +127,65 @@ function unavailableSummary(rows: RosterRow[], key: 'ytdPoints' | 'salary'): num
     : null;
 }
 
+function parseScheduleWeeks(payload: unknown): number[] {
+  const schedule = record(record(payload)?.schedule);
+  const entries = records(schedule?.weeklySchedule ?? schedule?.week ?? schedule?.weeks);
+  return [...new Set(entries.map((entry) => integerValue(entry.week ?? entry.W ?? entry.number)).filter((week): week is number => week !== null))]
+    .sort((left, right) => left - right);
+}
+
+function parseNflScheduleTeams(payload: unknown): Set<string> {
+  const schedule = record(record(payload)?.nflSchedule);
+  const matchups = records(schedule?.matchup);
+  const teams = new Set<string>();
+  for (const matchup of matchups) {
+    for (const team of records(matchup.team)) {
+      const id = text(team.id ?? team.team_id ?? team.teamId);
+      if (id) teams.add(id);
+    }
+  }
+  return teams;
+}
+
+async function fetchMflSiteSchedule(week: number): Promise<unknown> {
+  const response = await fetchMflSiteExport('nflSchedule', { W: String(week), JSON: '1' }, { revalidate: 60 * 60 });
+  return response.ok ? response.json().catch(() => null) : null;
+}
+
+export function formatRosterSalary(value: number | null): string {
+  return value === null
+    ? 'Unavailable'
+    : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value);
+}
+
+export function deriveRosterByeWeeks({ weeks, teamsByWeek }: RosterScheduleInputs): Map<string, number | null> {
+  const availableWeeks = [...new Set(weeks)].sort((left, right) => left - right);
+  if (availableWeeks.length === 0 || availableWeeks.some((week) => !(teamsByWeek.get(week)?.size))) return new Map();
+
+  const teams = new Map<string, Set<number>>();
+  for (const week of availableWeeks) {
+    for (const team of teamsByWeek.get(week) ?? []) {
+      const presentWeeks = teams.get(team) ?? new Set<number>();
+      presentWeeks.add(week);
+      teams.set(team, presentWeeks);
+    }
+  }
+
+  return new Map([...teams].map(([team, presentWeeks]) => {
+    const missingWeeks = availableWeeks.filter((week) => !presentWeeks.has(week));
+    return [team, missingWeeks.length === 1 ? missingWeeks[0] : null];
+  }));
+}
+
 export function parseRosterPageState(payloads: RosterPayloads): RosterPageState {
   const rosterEntries = exportEntries(payloads.roster, ['rosters']);
   const playerEntries = exportEntries(payloads.players, ['players']);
   const scoreEntries = exportEntries(payloads.scores, ['playerScores']);
   const salaryEntries = exportEntries(payloads.salaries, ['salaries']);
-  const tradeEntries = exportEntries(payloads.tradeBait, ['tradeBait']);
   const playerById = new Map(playerEntries.map((entry) => [idOf(entry), entry]));
   const scoreById = new Map(scoreEntries.map((entry) => [idOf(entry), numberValue(entry.score ?? entry.points ?? entry.total)]));
   const salaryById = new Map(salaryEntries.map((entry) => [idOf(entry), entry]));
-  const tradeIds = new Set(tradeEntries.map(idOf).filter(Boolean));
-  const tradeExportAvailable = hasExportShape(payloads.tradeBait, 'tradeBait');
+  const byeWeeks = payloads.schedule ? deriveRosterByeWeeks(payloads.schedule) : new Map<string, number | null>();
 
   const rows = rosterEntries.map((roster) => {
     const id = idOf(roster);
@@ -153,10 +198,9 @@ export function parseRosterPageState(payloads: RosterPayloads): RosterPageState 
       position: text(player.position ?? roster.position) || null,
       team: text(player.team ?? player.nflTeam) || null,
       ytdPoints,
-      byeWeek: integerValue(player.bye_week ?? player.byeWeek ?? player.bye),
+      byeWeek: byeWeeks.get(text(player.team ?? player.nflTeam)) ?? null,
       salary: numberValue(salary.salary ?? roster.salary),
       contractYear: integerValue(salary.contractYear ?? salary.contract_year ?? roster.contractYear),
-      tradeAvailability: !tradeExportAvailable ? 'Unavailable' : tradeIds.has(id) ? 'Available' : 'Not listed',
       status: statusText(roster.status),
     } satisfies RosterRow;
   }).filter((row) => row.id);
@@ -186,13 +230,13 @@ export async function loadRosterPageState(sessionCookieValue: string | null): Pr
   }
 
   const options = { sessionCookieValue, cache: 'no-store' as const };
-  const [leagueResponse, rosterResponse, playersResponse, scoresResponse, salariesResponse, tradeBaitResponse] = await Promise.all([
+  const [leagueResponse, rosterResponse, playersResponse, scoresResponse, salariesResponse, scheduleResponse] = await Promise.all([
     fetchMflExport('league', { JSON: '1' }, options),
     fetchMflExport('rosters', { FRANCHISE: resolution.franchiseId, JSON: '1' }, options),
     fetchMflExport('players', { JSON: '1' }, { revalidate: 60 * 60 * 24 }),
     fetchMflExport('playerScores', { W: 'YTD', JSON: '1' }, options),
     fetchMflExport('salaries', { JSON: '1' }, options),
-    fetchMflExport('tradeBait', { JSON: '1' }, options),
+    fetchMflExport('schedule', { JSON: '1' }, options),
   ]);
 
   if (!rosterResponse.ok || !playersResponse.ok) {
@@ -200,13 +244,19 @@ export async function loadRosterPageState(sessionCookieValue: string | null): Pr
   }
 
   const read = (response: Response) => response.ok ? response.json().catch(() => null) : Promise.resolve(null);
-  const [league, roster, players, scores, salaries, tradeBait] = await Promise.all([
-    read(leagueResponse), read(rosterResponse), read(playersResponse), read(scoresResponse), read(salariesResponse), read(tradeBaitResponse),
+  const [league, roster, players, scores, salaries, schedule] = await Promise.all([
+    read(leagueResponse), read(rosterResponse), read(playersResponse), read(scoresResponse), read(salariesResponse), read(scheduleResponse),
   ]);
+  const weeks = parseScheduleWeeks(schedule);
+  const schedulePayloads = await Promise.all(weeks.map(fetchMflSiteSchedule));
+  const scheduleInputs: RosterScheduleInputs = {
+    weeks,
+    teamsByWeek: new Map(weeks.map((week, index) => [week, parseNflScheduleTeams(schedulePayloads[index])])),
+  };
   const state = parseRosterPageState({
     franchiseId: resolution.franchiseId,
     franchiseName: parseFranchiseName(league, resolution.franchiseId),
-    roster, players, scores, salaries, tradeBait,
+    roster, players, scores, salaries, schedule: scheduleInputs,
   });
   return state.rows.length ? state : { ...state, ok: false, message: 'Roster data could not be loaded.' };
 }
