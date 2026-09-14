@@ -261,6 +261,14 @@ function makeProjectedScoresPayload() {
   };
 }
 
+function makePlayerScoresPayload() {
+  return {
+    playerScores: {
+      playerScore: [{ id: '00234', score: '6.7' }],
+    },
+  };
+}
+
 function makeInjuriesPayload() {
   return {
     injuries: {
@@ -395,6 +403,7 @@ test('loadLineupPageState resolves the authenticated franchise and preserves lea
     if (type === 'players') return createJsonResponse(makePlayersPayload());
     if (type === 'weeklyResults') return createJsonResponse(makePlayerStatusPayload());
     if (type === 'projectedScores') return createJsonResponse(makeProjectedScoresPayload());
+    if (type === 'playerScores') return createJsonResponse(makePlayerScoresPayload());
     if (type === 'injuries') return createJsonResponse(makeInjuriesPayload());
     if (type === 'topStarters') return createJsonResponse(makeTopStartersPayload());
     if (type === 'nflSchedule') return createJsonResponse(makeNflSchedulePayload());
@@ -451,6 +460,7 @@ test('loadLineupPageState defaults to the live MFL current week instead of sched
     if (type === 'players') return createJsonResponse(makePlayersPayload());
     if (type === 'weeklyResults') return createJsonResponse(makePlayerStatusPayload());
     if (type === 'projectedScores') return createJsonResponse(makeProjectedScoresPayload());
+    if (type === 'playerScores') return createJsonResponse(makePlayerScoresPayload());
     if (type === 'injuries') return createJsonResponse(makeInjuriesPayload());
     if (type === 'topStarters') return createJsonResponse(makeTopStartersPayload());
     if (type === 'nflSchedule') return createJsonResponse(makeNflSchedulePayload());
@@ -486,6 +496,7 @@ test('loadLineupPageState fixes a benched player after the real NFL kickoff', as
     if (type === 'players') return createJsonResponse(makePlayersPayload());
     if (type === 'weeklyResults') return createJsonResponse(makePlayerStatusPayload());
     if (type === 'projectedScores') return createJsonResponse(makeProjectedScoresPayload());
+    if (type === 'playerScores') return createJsonResponse(makePlayerScoresPayload());
     if (type === 'injuries') return createJsonResponse(makeInjuriesPayload());
     if (type === 'topStarters') return createJsonResponse(makeTopStartersPayload());
     if (type === 'nflSchedule') return createJsonResponse({ nflSchedule: { matchup: [{ kickoff: '1', team: [{ id: 'WAS', isHome: '0', opponent: 'PHI' }, { id: 'PHI', isHome: '1', opponent: 'WAS' }] }] } });
@@ -500,6 +511,7 @@ test('loadLineupPageState fixes a benched player after the real NFL kickoff', as
     assert.equal(benched?.selected, false);
     assert.equal(benched?.locked, true);
     assert.equal(benched?.canToggle, false);
+    assert.equal(benched?.actualPoints, 6.7);
     assert.match(benched?.statusText ?? '', /^No injury designation · Bye week unavailable · Locked · Kickoff /);
   } finally {
     globalThis.fetch = originalFetch;

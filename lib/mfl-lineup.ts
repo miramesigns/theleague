@@ -542,6 +542,13 @@ function parseActualPlayerScores(payload: unknown): Map<string, { score: number;
   const scoring = toRecord(root?.liveScoring ?? root?.weeklyResults);
   const scores = new Map<string, { score: number; gameSecondsRemaining: number | null }>();
 
+  for (const player of toRecords(toRecord(root?.playerScores)?.playerScore)) {
+    const id = extractText(player.id ?? player.player_id ?? player.playerId);
+    const score = safeNumber(player.score ?? player.points);
+    if (!id || score === null) continue;
+    scores.set(id, { score, gameSecondsRemaining: null });
+  }
+
   for (const matchup of toRecords(scoring?.matchup)) {
     for (const franchise of toRecords(matchup.franchise)) {
       const playersRoot = toRecord(franchise.players);
@@ -858,7 +865,18 @@ async function loadLineupPayloads(sessionCookieValue: string | null, selectedWee
 
   const rosterPlayers = parseRosterPlayers(rosterPayload);
   const projectedScores = parseProjectedScores(projectedScoresPayload);
-  const actualScores = parseActualPlayerScores(selectedLiveScoringPayload ?? liveScoringPayload);
+  const playerScoresResponse = rosterPlayers.size > 0
+    ? await fetchMflExport('playerScores', {
+      W: String(selectedWeek),
+      PLAYERS: [...rosterPlayers.keys()].join(','),
+      JSON: '1',
+    }, { sessionCookieValue, cache: 'no-store' })
+    : null;
+  const playerScoresPayload = playerScoresResponse?.ok ? await playerScoresResponse.json().catch(() => null) : null;
+  const actualScores = parseActualPlayerScores(playerScoresPayload);
+  for (const [playerId, score] of parseActualPlayerScores(selectedLiveScoringPayload ?? liveScoringPayload)) {
+    actualScores.set(playerId, score);
+  }
   const injuries = parseInjuries(injuriesPayload);
   const topStarters = parseTopStarters(topStartersPayload);
   const startRanks = deriveStartRanks(topStarters, playersDirectory);
