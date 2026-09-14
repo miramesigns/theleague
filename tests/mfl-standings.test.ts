@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { parseStandings } from '../lib/mfl-standings.ts';
+import { groupStandingsByDivision, parseStandings } from '../lib/mfl-standings.ts';
 
 test('parseStandings maps the complete MFL standings columns without dropping zeroes', () => {
   const rows = parseStandings({
@@ -18,12 +18,16 @@ test('parseStandings maps the complete MFL standings columns without dropping ze
         },
       ],
     },
-  }, new Map([['0004', 'The Ashy Elbows'], ['0005', 'Outlaw Joker']]), '0004');
+  }, new Map([['0004', 'The Ashy Elbows'], ['0005', 'Outlaw Joker']]), '0004', new Map([
+    ['0004', '01'], ['0005', '01'],
+  ]), new Map([['01', 'Money']]));
 
   assert.deepEqual(rows[0], {
     rank: 1,
     franchiseId: '0004',
     teamName: 'The Ashy Elbows',
+    divisionId: '01',
+    divisionName: 'Money',
     record: '1-0-0',
     winPct: 1,
     gamesBack: 0,
@@ -40,4 +44,5 @@ test('parseStandings maps the complete MFL standings columns without dropping ze
   assert.equal(rows[1].gamesBack, 1);
   assert.equal(rows[1].averagePointsFor, 40.1);
   assert.equal(rows[1].powerRank, 8);
+  assert.deepEqual(groupStandingsByDivision(rows).map((division) => division.name), ['Money']);
 });

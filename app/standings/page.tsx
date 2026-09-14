@@ -1,5 +1,5 @@
 import { getMflSessionCookieValue } from '@/lib/mfl-session';
-import { loadStandingsPageState, type StandingRow } from '@/lib/mfl-standings';
+import { groupStandingsByDivision, loadStandingsPageState, type StandingRow } from '@/lib/mfl-standings';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -55,6 +55,7 @@ function StandingCard({ row }: { row: StandingRow }) {
 
 export default async function StandingsPage() {
   const state = await loadStandingsPageState(await getMflSessionCookieValue());
+  const divisions = groupStandingsByDivision(state.rows);
 
   return (
     <main className="grid standings-view">
@@ -88,29 +89,39 @@ export default async function StandingsPage() {
                   <th scope="col">PWR</th>
                 </tr>
               </thead>
-              <tbody>
-                {state.rows.map((row) => (
-                  <tr key={row.franchiseId} className={row.isPrimary ? 'primary' : undefined}>
-                    <th scope="row">{row.rank}. {row.teamName}</th>
-                    <td>{row.record}</td>
-                    <td>{percentage(row.winPct)}</td>
-                    <td>{gamesBack(row.gamesBack)}</td>
-                    <td>{row.streak ?? '—'}</td>
-                    <td>{decimal(row.pointsFor)}</td>
-                    <td>{decimal(row.averagePointsFor)}</td>
-                    <td>{decimal(row.pointsAgainst)}</td>
-                    <td>{decimal(row.averagePointsAgainst)}</td>
-                    <td>{row.divisionRecord}</td>
-                    <td>{row.nonDivisionRecord}</td>
-                    <td>{row.powerRank ?? '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
+              {divisions.map((division) => (
+                <tbody key={division.name}>
+                  <tr className="standings-division-row"><th colSpan={12} scope="colgroup">{division.name} Division</th></tr>
+                  {division.rows.map((row) => (
+                    <tr key={row.franchiseId} className={row.isPrimary ? 'primary' : undefined}>
+                      <th scope="row">{row.rank}. {row.teamName}</th>
+                      <td>{row.record}</td>
+                      <td>{percentage(row.winPct)}</td>
+                      <td>{gamesBack(row.gamesBack)}</td>
+                      <td>{row.streak ?? '—'}</td>
+                      <td>{decimal(row.pointsFor)}</td>
+                      <td>{decimal(row.averagePointsFor)}</td>
+                      <td>{decimal(row.pointsAgainst)}</td>
+                      <td>{decimal(row.averagePointsAgainst)}</td>
+                      <td>{row.divisionRecord}</td>
+                      <td>{row.nonDivisionRecord}</td>
+                      <td>{row.powerRank ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              ))}
             </table>
           </div>
 
           <div className="standings-cards" aria-label="Mobile league standings">
-            {state.rows.map((row) => <StandingCard key={row.franchiseId} row={row} />)}
+            {divisions.map((division) => (
+              <section className="standing-division" key={division.name}>
+                <h2>{division.name} Division</h2>
+                <div className="standing-division-cards">
+                  {division.rows.map((row) => <StandingCard key={row.franchiseId} row={row} />)}
+                </div>
+              </section>
+            ))}
           </div>
         </section>
       )}

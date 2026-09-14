@@ -976,6 +976,17 @@ textarea {
   color: #cffafe;
 }
 
+.standings-table .standings-division-row th {
+  position: static;
+  padding: 9px 12px;
+  text-align: left;
+  color: #cffafe;
+  background: rgba(8, 145, 178, 0.18);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .standings-cards {
   display: none;
 }
@@ -987,6 +998,29 @@ textarea {
   border: 1px solid var(--line);
   border-radius: 18px;
   background: rgba(7, 13, 24, 0.55);
+}
+
+.standing-division {
+  display: grid;
+  gap: 8px;
+}
+
+.standing-division + .standing-division {
+  margin-top: 8px;
+}
+
+.standing-division h2 {
+  margin: 0;
+  padding: 4px 2px;
+  color: #cffafe;
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.standing-division-cards {
+  display: grid;
+  gap: 10px;
 }
 
 .standing-card.primary {

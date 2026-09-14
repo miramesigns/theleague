@@ -7,6 +7,8 @@ export type StandingRow = {
   rank: number;
   franchiseId: string;
   teamName: string;
+  divisionId: string;
+  divisionName: string;
   record: string;
   winPct: number;
   gamesBack: number;
@@ -56,18 +58,38 @@ function record(wins: number, losses: number, ties: number): string {
   return `${wins}-${losses}-${ties}`;
 }
 
-function parseLeagueNames(payload: unknown): Map<string, string> {
+function parseLeagueDirectory(payload: unknown): {
+  names: Map<string, string>;
+  franchiseDivisions: Map<string, string>;
+  divisionNames: Map<string, string>;
+} {
   const league = toRecord(toRecord(payload)?.league);
   const franchises = toRecords(toRecord(league?.franchises)?.franchise);
   const names = new Map<string, string>();
+  const franchiseDivisions = new Map<string, string>();
+  const divisionNames = new Map<string, string>();
+
+  for (const division of toRecords(toRecord(league?.divisions)?.division)) {
+    const id = text(division.id);
+    if (id) divisionNames.set(id, text(division.name) || `Division ${id}`);
+  }
+
   for (const franchise of franchises) {
     const id = text(franchise.id);
-    if (id) names.set(id, text(franchise.name) || `Franchise ${id}`);
+    if (!id) continue;
+    names.set(id, text(franchise.name) || `Franchise ${id}`);
+    franchiseDivisions.set(id, text(franchise.division ?? franchise.division_id));
   }
-  return names;
+  return { names, franchiseDivisions, divisionNames };
 }
 
-export function parseStandings(payload: unknown, names: Map<string, string>, primaryFranchiseId: string | null): StandingRow[] {
+export function parseStandings(
+  payload: unknown,
+  names: Map<string, string>,
+  primaryFranchiseId: string | null,
+  franchiseDivisions = new Map<string, string>(),
+  divisionNames = new Map<string, string>(),
+): StandingRow[] {
   const root = toRecord(payload);
   const standings = toRecord(root?.leagueStandings ?? root?.standings);
   const franchises = toRecords(standings?.franchise);
@@ -86,11 +108,14 @@ export function parseStandings(payload: unknown, names: Map<string, string>, pri
     const nonDivisionWins = count(franchise.nondivw ?? franchise.non_divw);
     const nonDivisionLosses = count(franchise.nondivl ?? franchise.non_divl);
     const nonDivisionTies = count(franchise.nondivt ?? franchise.non_divt);
+    const divisionId = franchiseDivisions.get(franchiseId) || text(franchise.division ?? franchise.division_id) || 'league';
 
     return {
       rank: 0,
       franchiseId,
       teamName: names.get(franchiseId) ?? `Franchise ${franchiseId}`,
+      divisionId,
+      divisionName: divisionNames.get(divisionId) ?? 'League',
       record: record(wins, losses, ties),
       winPct: number(franchise.h2hpct ?? franchise.pct) ?? (games > 0 ? (wins + ties / 2) / games : 0),
       gamesBack: number(franchise.h2hgb ?? franchise.gb) ?? 0,
@@ -108,16 +133,40 @@ export function parseStandings(payload: unknown, names: Map<string, string>, pri
     };
   }).filter((row) => row.franchiseId);
 
-  const leader = parsed.reduce<{ wins: number; losses: number } | null>((best, row) => {
-    if (!best || row.wins - row.losses > best.wins - best.losses) return { wins: row.wins, losses: row.losses };
-    return best;
-  }, null);
+  const divisionLeaders = new Map<string, { wins: number; losses: number }>();
+  for (const row of parsed) {
+    const best = divisionLeaders.get(row.divisionId);
+    if (!best || row.wins - row.losses > best.wins - best.losses) {
+      divisionLeaders.set(row.divisionId, { wins: row.wins, losses: row.losses });
+    }
+  }
 
-  return parsed.map((row, index) => ({
-    ...row,
-    rank: index + 1,
-    gamesBack: number(franchises[index]?.h2hgb ?? franchises[index]?.gb) ?? (leader ? Math.max(0, ((leader.wins - row.wins) + (row.losses - leader.losses)) / 2) : 0),
-  })).map(({ wins: _wins, losses: _losses, ...row }) => row);
+  const divisionRanks = new Map<string, number>();
+  return parsed.map((row, index) => {
+    const rank = (divisionRanks.get(row.divisionId) ?? 0) + 1;
+    const leader = divisionLeaders.get(row.divisionId);
+    divisionRanks.set(row.divisionId, rank);
+    return {
+      ...row,
+      rank,
+      gamesBack: number(franchises[index]?.h2hgb ?? franchises[index]?.gb) ?? (leader ? Math.max(0, ((leader.wins - row.wins) + (row.losses - leader.losses)) / 2) : 0),
+    };
+  }).map(({ wins: _wins, losses: _losses, ...row }) => row);
+}
+
+export function groupStandingsByDivision(rows: StandingRow[]) {
+  const preferredOrder = ['Money', 'Power', 'Respect'];
+  const groups = new Map<string, StandingRow[]>();
+  for (const row of rows) groups.set(row.divisionName, [...(groups.get(row.divisionName) ?? []), row]);
+
+  return [...groups.entries()]
+    .sort(([left], [right]) => {
+      const leftIndex = preferredOrder.indexOf(left);
+      const rightIndex = preferredOrder.indexOf(right);
+      if (leftIndex >= 0 || rightIndex >= 0) return (leftIndex < 0 ? preferredOrder.length : leftIndex) - (rightIndex < 0 ? preferredOrder.length : rightIndex);
+      return left.localeCompare(right);
+    })
+    .map(([name, divisionRows]) => ({ name, rows: divisionRows }));
 }
 
 export async function loadStandingsPageState(sessionCookieValue: string | null): Promise<StandingsPageState> {
@@ -132,7 +181,8 @@ export async function loadStandingsPageState(sessionCookieValue: string | null):
 
     if (!leagueResponse.ok || !standingsResponse.ok) throw new Error('MFL standings request failed');
     const [leaguePayload, standingsPayload] = await Promise.all([leagueResponse.json(), standingsResponse.json()]);
-    const rows = parseStandings(standingsPayload, parseLeagueNames(leaguePayload), primary?.franchiseId ?? null);
+    const directory = parseLeagueDirectory(leaguePayload);
+    const rows = parseStandings(standingsPayload, directory.names, primary?.franchiseId ?? null, directory.franchiseDivisions, directory.divisionNames);
     if (rows.length === 0) throw new Error('MFL returned no standings');
 
     return { ok: true, message: 'Current league standings from MFL.', rows };
