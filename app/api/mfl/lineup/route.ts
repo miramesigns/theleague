@@ -107,9 +107,9 @@ export async function POST(request: Request) {
     return Response.json(
       {
         ok: true,
-        confirmed: result.confirmed === true,
+        verified: result.confirmed === true,
         week,
-        submittedAt: result.submittedAt,
+        submittedAt: result.submittedAt ?? null,
         starters: result.actualStarters ?? result.normalizedStarters,
         franchiseId: context.franchiseId,
         franchiseName: context.franchiseName,

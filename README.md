@@ -8,7 +8,7 @@ A phone-first Next.js App Router companion for a MyFantasyLeague league.
 - `Scores` with live-board-style layout and a promoted "My matchup" card.
 - Server-only MFL export proxy for `www42.myfantasyleague.com`, league `35743`, season `2026`.
 - `Lineup` editor with the 10-starter rules and a confirmation modal.
-- Safe stubbed lineup import route that requires login and explicit confirmation.
+- Server-side lineup import route with roster validation and post-submit MFL verification.
 - Server-side login route architecture that keeps only an `MFL_USER_ID` httpOnly session cookie.
 - Basic `Waivers`, `Trades`, `More`, plus `Roster` and `Standings` pages.
 - Manifest and SVG icons for PWA plumbing.
@@ -48,7 +48,7 @@ The proxy always sends `User-Agent: PlugGrokBot` and caches shared live scoring 
 - Login credentials are posted only to the server route.
 - The login route performs the upstream MFL credential exchange server-side and stores only the returned `MFL_USER_ID` session cookie.
 - Server-side API routes can read that cookie through `cookies()` without exposing credentials to the browser.
-- The lineup import route is intentionally non-destructive and returns a `501` stub until explicit write logic is added.
+- The lineup import route validates the authenticated franchise and verifies the saved MFL starters before reporting success.
 - Do not add real secrets to the repo.
 
 ## Validation

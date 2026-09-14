@@ -81,7 +81,7 @@ export function LineupEditor({ state }: { state: LineupPageState }) {
   const [clearOpen, setClearOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string>('');
-  const [result, setResult] = useState<{ confirmedAt: string; week: number; starters: string[] } | null>(null);
+  const [result, setResult] = useState<{ confirmedAt: string | null; week: number; starters: string[] } | null>(null);
 
   const draftSummary = useMemo(() => summarizeDraft(state, draft), [draft, state]);
   const groupedRows = useMemo(() => groupRows(state.rows), [state.rows]);
@@ -114,17 +114,22 @@ export function LineupEditor({ state }: { state: LineupPageState }) {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ week: state.selectedWeek, starters, comments, clear }),
       });
-      const payload = (await response.json().catch(() => null)) as { ok?: boolean; message?: string; confirmed?: boolean; submittedAt?: string; starters?: string[] } | null;
+      const payload = (await response.json().catch(() => null)) as { ok?: boolean; message?: string; verified?: boolean; submittedAt?: string | null; starters?: string[] } | null;
 
       if (!response.ok || !payload?.ok) {
         setNotice(payload?.message || 'Lineup submission failed.');
         return;
       }
 
+      if (payload.verified !== true || !Array.isArray(payload.starters)) {
+        setNotice('MFL may have received the lineup, but the saved lineup could not be verified. Refresh before trying again.');
+        return;
+      }
+
       setResult({
-        confirmedAt: payload.submittedAt || new Date().toISOString(),
+        confirmedAt: payload.submittedAt ?? null,
         week: state.selectedWeek,
-        starters: payload.starters || starters,
+        starters: payload.starters,
       });
       setNotice(clear ? 'Lineup cleared.' : 'Lineup confirmed.');
     } catch {
@@ -151,16 +156,18 @@ export function LineupEditor({ state }: { state: LineupPageState }) {
   }
 
   const statusLabel = result
-    ? `Confirmed ${new Date(result.confirmedAt).toLocaleString()} · Week ${result.week}`
+    ? `${result.confirmedAt ? `Confirmed ${new Date(result.confirmedAt).toLocaleString()}` : 'Confirmed by MFL'} · Week ${result.week}`
     : state.submittedAt
       ? `Submitted ${new Date(state.submittedAt).toLocaleString()}`
-      : 'Draft loaded';
+      : state.hasSubmittedLineup
+        ? 'Lineup submitted'
+        : 'No lineup submitted';
 
   return (
     <main className="grid lineup-view">
       <div className="banner lineup-banner">
         <div>
-          <div className="eyebrow">Submit Lineup</div>
+          <h1 className="eyebrow">Submit Lineup</h1>
           <div className="small muted">{state.franchiseName || `Franchise ${state.franchiseId ?? ''}`}</div>
         </div>
         <div className="scores-controls">
@@ -174,7 +181,7 @@ export function LineupEditor({ state }: { state: LineupPageState }) {
       <section className="panel section stack">
         <div className="row">
           <div>
-            <div className="eyebrow">Roster status</div>
+            <h2 className="eyebrow">Roster status</h2>
             <div className="small muted">Select starters, review the bands, then submit. Locked, bye, and injury states are never guessed.</div>
           </div>
           <span className="pill">{draftSummary?.legal ? 'Ready' : 'Needs fixes'}</span>
@@ -182,7 +189,7 @@ export function LineupEditor({ state }: { state: LineupPageState }) {
 
         {groupedRows.map((group) => (
           <div key={group.position} className="stack">
-            <div className="section-label">{group.position}</div>
+            <h2 className="section-label">{group.position}</h2>
             <div className="lineup-group">
               {group.rows.map((row) => {
                 const selected = Boolean(draft[row.id]);
@@ -205,8 +212,8 @@ export function LineupEditor({ state }: { state: LineupPageState }) {
                       <span className={`tag ${selected ? 'live' : 'scheduled'}`} style={{ color: statusTone(row.availability) }}>
                         {selected ? 'Starter' : 'Bench'}
                       </span>
-                      <span className="player-meta">{row.injury ? `Injury: ${row.injury}` : 'Injury: unknown'}</span>
-                      <span className="player-meta">{row.bye ? 'Bye' : 'No bye'} · {row.locked ? 'Locked' : 'Unlocked'}</span>
+                      <span className="player-meta">{row.injury ? `Injury: ${row.injury}` : 'Injury: None reported'}</span>
+                      <span className="player-meta">{row.byeWeek === null ? 'Bye: unavailable' : `Bye ${row.byeWeek}`}{row.bye ? ' · This week' : ''} · {row.locked ? 'Locked' : 'Unlocked'}</span>
                     </div>
                   </button>
                 );
@@ -219,7 +226,7 @@ export function LineupEditor({ state }: { state: LineupPageState }) {
       <section className="panel section stack">
         <div className="row">
           <div>
-            <div className="eyebrow">Summary</div>
+            <h2 className="eyebrow">Summary</h2>
             <div className="small muted">{draftSummary?.totalSelected ?? 0} selected · {state.rules.totalMin}-{state.rules.totalMax} required</div>
           </div>
           <span className="pill">{draftSummary?.legal ? 'Legal' : 'Illegal'}</span>
@@ -249,12 +256,13 @@ export function LineupEditor({ state }: { state: LineupPageState }) {
       <section className="panel section stack">
         <div className="row">
           <div>
-            <div className="eyebrow">Comments</div>
+            <label className="eyebrow" htmlFor="lineup-comments">Comments</label>
             <div className="small muted">Optional, 280 characters max.</div>
           </div>
           <span className="pill">{comments.length}/280</span>
         </div>
         <textarea
+          id="lineup-comments"
           className="field lineup-comments"
           maxLength={280}
           rows={4}

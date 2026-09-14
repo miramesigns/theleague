@@ -17,7 +17,17 @@ export type LineupRules = {
   totalMax: number;
 };
 
-export type LineupInjuryDesignation = 'Questionable' | 'Doubtful' | 'Probable' | 'Out';
+export type LineupInjuryDesignation =
+  | 'Questionable'
+  | 'Doubtful'
+  | 'Probable'
+  | 'Out'
+  | 'Injured Reserve'
+  | 'PUP'
+  | 'NFI'
+  | 'Suspended'
+  | 'Holdout'
+  | 'Retired';
 
 export type LineupRosterSnapshot = {
   id: string;
@@ -28,6 +38,7 @@ export type LineupRosterSnapshot = {
   locked: boolean;
   selected: boolean;
   bye: string | null;
+  byeWeek: number | null;
   opponent: string | null;
   homeAway: 'home' | 'away' | null;
   kickoffUtc: number | null;
@@ -62,6 +73,7 @@ export type LineupPageState = {
   rules: LineupRules | null;
   rows: LineupRosterSnapshot[];
   summary: LineupPageSummary;
+  hasSubmittedLineup: boolean;
   submittedAt: string | null;
 };
 
@@ -145,19 +157,9 @@ function safeInteger(value: unknown): number | null {
   return parsed !== null && Number.isInteger(parsed) ? parsed : null;
 }
 
-function parseBooleanish(value: unknown): boolean {
-  if (typeof value === 'boolean') return value;
-  if (typeof value === 'number') return value !== 0;
-  if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase();
-    return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'y';
-  }
-  return Boolean(value);
-}
-
 function normalizePosition(value: string): string {
   const upper = value.trim().toUpperCase();
-  if (upper === 'DEF') return 'Def';
+  if (upper === 'DEF' || upper === 'DST' || upper === 'D/ST') return 'DEF';
   return upper;
 }
 
@@ -377,7 +379,8 @@ export function resolveRosterPlayerName(playerName: string, directoryName: strin
 
 function parseProjectedScores(payload: unknown): Map<string, number> {
   const root = toRecord(payload) as JsonRecord | null;
-  const players = toRecords((root?.projectedScores as JsonRecord | undefined)?.player ?? (root?.projectedScores as JsonRecord | undefined)?.players ?? root?.player);
+  const projectedScores = toRecord(root?.projectedScores);
+  const players = toRecords(projectedScores?.playerScore ?? projectedScores?.player ?? projectedScores?.players ?? root?.playerScore ?? root?.player);
   const result = new Map<string, number>();
   for (const player of players) {
     const id = extractText(player.id);
@@ -393,12 +396,19 @@ export function normalizeLineupInjuryDesignation(value: unknown): LineupInjuryDe
   if (normalized === 'd' || normalized === 'doubtful') return 'Doubtful';
   if (normalized === 'p' || normalized === 'probable') return 'Probable';
   if (normalized === 'o' || normalized === 'out') return 'Out';
+  if (normalized === 'ir' || normalized === 'ir-r') return 'Injured Reserve';
+  if (normalized === 'pup' || normalized === 'ir-pup') return 'PUP';
+  if (normalized === 'nfi' || normalized === 'ir-nfi') return 'NFI';
+  if (normalized === 'suspended') return 'Suspended';
+  if (normalized === 'holdout') return 'Holdout';
+  if (normalized === 'retired') return 'Retired';
   return null;
 }
 
 function parseInjuries(payload: unknown): Map<string, LineupInjuryDesignation> {
   const root = toRecord(payload) as JsonRecord | null;
-  const players = toRecords((root?.injuries as JsonRecord | undefined)?.player ?? root?.player);
+  const injuries = toRecord(root?.injuries);
+  const players = toRecords(injuries?.injury ?? injuries?.player ?? root?.injury ?? root?.player);
   const result = new Map<string, LineupInjuryDesignation>();
   for (const player of players) {
     const id = extractText(player.id);
@@ -414,35 +424,64 @@ function parseTopStarters(payload: unknown): Map<string, number> {
   const result = new Map<string, number>();
   for (const player of players) {
     const id = extractText(player.id);
-    const percentage = safeNumber(player.startPercentage ?? player.percentage ?? player.rate);
+    const percentage = safeNumber(player.percent ?? player.startPercentage ?? player.percentage ?? player.rate);
     if (id && percentage !== null) result.set(id, percentage);
   }
   return result;
 }
 
-function parseRosterStatus(payload: unknown): Map<string, { status: LineupRosterSnapshot['rosterStatus']; locked: boolean }> {
+function parseSubmittedLineup(payload: unknown, franchiseId: string): { found: boolean; starterIds: Set<string> } {
   const root = toRecord(payload) as JsonRecord | null;
-  const players = toRecords((root?.playerRosterStatus as JsonRecord | undefined)?.player ?? (root?.rosterStatus as JsonRecord | undefined)?.player ?? root?.player);
-  const result = new Map<string, { status: LineupRosterSnapshot['rosterStatus']; locked: boolean }>();
+  const weeklyResults = toRecord(root?.weeklyResults);
+  const matchups = toRecords(weeklyResults?.matchup);
 
-  for (const player of players) {
-    const id = extractText(player.id ?? player.player_id ?? player.playerId);
-    if (!id) continue;
+  for (const matchup of matchups) {
+    for (const franchise of toRecords(matchup.franchise)) {
+      const id = extractText(franchise.id ?? franchise.franchise_id ?? franchise.franchiseId);
+      if (id !== franchiseId) continue;
 
-    const rawStatus = extractText(player.status ?? player.rosterStatus ?? player.lineupStatus ?? player.slot);
-    const upper = rawStatus.toUpperCase();
-    let status: LineupRosterSnapshot['rosterStatus'] = 'UNKNOWN';
-    if (upper === 'S' || upper === 'STARTER') status = 'S';
-    else if (upper === 'B' || upper === 'BENCH') status = 'B';
-    else if (upper === 'IR') status = 'IR';
-    else if (upper === 'TAXI') status = 'TAXI';
-    else if (upper === 'RESERVE') status = 'RESERVE';
+      const starterIds = new Set<string>();
+      for (const player of toRecords(franchise.player)) {
+        const status = extractText(player.status).toLowerCase();
+        const playerId = extractText(player.id ?? player.player_id ?? player.playerId);
+        if (playerId && (status === 'starter' || status === 's')) starterIds.add(playerId);
+      }
 
-    const locked = parseBooleanish(player.locked ?? player.lock ?? player.isLocked ?? player.started ?? player.startLocked);
-    result.set(id, { status, locked });
+      for (const playerId of extractText(franchise.starters).split(',').map((value) => value.trim()).filter(Boolean)) {
+        starterIds.add(playerId);
+      }
+
+      return { found: starterIds.size > 0, starterIds };
+    }
   }
 
-  return result;
+  return { found: false, starterIds: new Set() };
+}
+
+function deriveStartRanks(
+  topStarters: Map<string, number>,
+  playersDirectory: Map<string, { name: string; position: string; team: string | null }>,
+): Map<string, number> {
+  const byPosition = new Map<string, Array<{ id: string; percentage: number }>>();
+
+  for (const [id, percentage] of topStarters) {
+    const position = playersDirectory.get(id)?.position;
+    if (!position) continue;
+    const entries = byPosition.get(position) ?? [];
+    entries.push({ id, percentage });
+    byPosition.set(position, entries);
+  }
+
+  const ranks = new Map<string, number>();
+  for (const entries of byPosition.values()) {
+    entries.sort((left, right) => right.percentage - left.percentage || left.id.localeCompare(right.id));
+    entries.forEach((entry, index) => ranks.set(entry.id, index + 1));
+  }
+
+  for (const [id, player] of playersDirectory) {
+    if (!ranks.has(id)) ranks.set(id, (byPosition.get(player.position)?.length ?? 0) + 1);
+  }
+  return ranks;
 }
 
 function parseRosterPlayers(payload: unknown): Map<string, { id: string; name: string; position: string; team: string | null }> {
@@ -471,15 +510,18 @@ function parseRosterPlayers(payload: unknown): Map<string, { id: string; name: s
   return result;
 }
 
-export function formatLineupRowMeta(row: Pick<LineupRosterSnapshot, 'name' | 'position' | 'team' | 'opponent' | 'homeAway' | 'bye' | 'projection' | 'startPercentage'>): LineupRowMeta {
+export function formatLineupRowMeta(row: Pick<LineupRosterSnapshot, 'name' | 'position' | 'team' | 'opponent' | 'homeAway' | 'bye' | 'projection' | 'startPercentage' | 'rosterRank'>): LineupRowMeta {
   const matchupText = row.bye
     ? 'Bye'
     : row.opponent && row.homeAway
       ? `${row.homeAway === 'home' ? 'vs' : '@'} ${row.opponent}`
       : '-- / --';
-  const metricsText = row.projection !== null && row.startPercentage !== null
-    ? `${Number.isInteger(row.projection) ? String(row.projection) : row.projection.toFixed(1)} / ${row.startPercentage}%`
-    : '-- / --';
+  const metrics = [
+    row.projection === null ? null : `Proj ${Number.isInteger(row.projection) ? String(row.projection) : row.projection.toFixed(1)}`,
+    row.rosterRank == null ? null : `Start rank ${row.rosterRank}`,
+    row.startPercentage === null ? null : `Start ${Math.round(row.startPercentage)}%`,
+  ].filter(Boolean);
+  const metricsText = metrics.length > 0 ? metrics.join(' · ') : 'Metrics unavailable';
   const compactText = `${row.position} · ${row.team ?? '--'} · ${matchupText} · ${metricsText}`;
 
   return {
@@ -574,6 +616,7 @@ function buildErrorState(message: string): LineupPageState {
     rules: null,
     rows: [],
     summary: { totalSelected: 0, totalMin: 0, totalMax: 0, legal: false, problems: [message], perPosition: {} },
+    hasSubmittedLineup: false,
     submittedAt: null,
   };
 }
@@ -622,10 +665,10 @@ function summarizeRows(rules: LineupRules, rows: LineupRosterSnapshot[]): Lineup
 function buildRows(args: {
   rosterPlayers: Map<string, { id: string; name: string; position: string; team: string | null }>;
   playersDirectory: Map<string, { name: string; position: string; team: string | null }>;
-  rosterStatuses: Map<string, { status: LineupRosterSnapshot['rosterStatus']; locked: boolean }>;
   projectedScores: Map<string, number>;
   injuries: Map<string, LineupInjuryDesignation>;
   topStarters: Map<string, number>;
+  startRanks: Map<string, number>;
   schedule: Map<string, { opponent: string | null; homeAway: 'home' | 'away' | null; kickoffUtc: number | null; kickoffLocal: string | null }>;
   selectedStarterIds: Set<string>;
   selectedWeek: number | null;
@@ -634,52 +677,44 @@ function buildRows(args: {
   const rows: LineupRosterSnapshot[] = [];
 
   for (const player of args.rosterPlayers.values()) {
-    const status = args.rosterStatuses.get(player.id) ?? { status: 'UNKNOWN', locked: false };
     const directoryPlayer = args.playersDirectory.get(player.id) ?? null;
     const name = resolveRosterPlayerName(player.name, directoryPlayer?.name ?? null, player.id);
     const team = player.team ?? directoryPlayer?.team ?? null;
     const position = player.position === 'UNK' ? directoryPlayer?.position ?? 'UNK' : player.position;
     const game = team ? args.schedule.get(team) ?? null : null;
     const injury = args.injuries.get(player.id) ?? null;
-    const selected = args.selectedStarterIds.has(player.id) || status.status === 'S';
+    const selected = args.selectedStarterIds.has(player.id);
     const kickoffUtc = game?.kickoffUtc ?? null;
     const locked = Boolean(kickoffUtc !== null && kickoffUtc * 1000 <= Date.now());
     const byeWeek = team ? args.byeWeeksByTeam.get(team) ?? null : null;
     const isByeWeek = byeWeek !== null && args.selectedWeek !== null && byeWeek === args.selectedWeek;
     const bye = isByeWeek ? 'Bye' : null;
     const availability: LineupRosterSnapshot['availability'] = locked ? 'locked' : bye ? 'bye' : injury ? 'injured' : game ? 'available' : 'unknown';
-    const statusText = `${injury ?? 'Injury unknown'} · ${bye ?? 'No bye'} · ${locked ? 'Locked' : 'Unlocked'} · Kickoff ${game?.kickoffLocal ?? 'unknown'}`;
+    const statusText = `${injury ? `Injury ${injury}` : 'No injury designation'} · ${byeWeek === null ? 'Bye week unavailable' : `Bye ${byeWeek}`}${isByeWeek ? ' (this week)' : ''} · ${locked ? 'Locked' : 'Unlocked'} · Kickoff ${game?.kickoffLocal ?? 'unknown'}`;
 
     rows.push({
       id: player.id,
       name,
       position,
       team,
-      rosterStatus: status.status,
+      rosterStatus: selected ? 'S' : 'B',
       locked,
       selected,
       bye,
+      byeWeek,
       opponent: game?.opponent ?? null,
       homeAway: game?.homeAway ?? null,
       kickoffUtc: game?.kickoffUtc ?? null,
       kickoffLocal: game?.kickoffLocal ?? null,
       injury,
       projection: args.projectedScores.get(player.id) ?? null,
-      startPercentage: args.topStarters.get(player.id) ?? null,
-      rosterRank: null,
+      startPercentage: args.topStarters.size > 0 ? args.topStarters.get(player.id) ?? 0 : null,
+      rosterRank: args.startRanks.get(player.id) ?? null,
       statusText,
       availability,
       canToggle: !locked && !bye && (injury !== 'Out' || selected),
       group: groupPosition(position),
     });
-  }
-
-  const rankByGroup = new Map<string, number>();
-  for (const row of rows) {
-    const key = row.group;
-    const next = (rankByGroup.get(key) ?? 0) + 1;
-    rankByGroup.set(key, next);
-    row.rosterRank = next;
   }
 
   const order = ['QB', 'RB', 'WR', 'TE', 'PK', 'DEF', 'OTHER'];
@@ -757,21 +792,21 @@ async function loadLineupPayloads(sessionCookieValue: string | null, selectedWee
     return { ok: false as const, message: 'Lineup data could not be loaded.' };
   }
 
-  const [rosterResponse, rosterStatusResponse, projectedScoresResponse, injuriesResponse, topStartersResponse] = await Promise.all([
+  const [rosterResponse, weeklyResultsResponse, projectedScoresResponse, injuriesResponse, topStartersResponse] = await Promise.all([
     fetchMflExport('rosters', { FRANCHISE: franchiseId, W: String(selectedWeek), JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
-    fetchMflExport('playerRosterStatus', { FRANCHISE: franchiseId, W: String(selectedWeek), JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
+    fetchMflExport('weeklyResults', { W: String(selectedWeek), JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
     fetchMflExport('projectedScores', { JSON: '1', W: String(selectedWeek) }, { sessionCookieValue, cache: 'no-store' }),
-    fetchMflExport('injuries', { JSON: '1', W: String(selectedWeek) }, { sessionCookieValue, cache: 'no-store' }),
-    fetchMflExport('topStarters', { JSON: '1', W: String(selectedWeek) }, { sessionCookieValue, cache: 'no-store' }),
+    fetchMflSiteExport('injuries', { JSON: '1', W: String(selectedWeek) }, { revalidate: 5 * 60 }),
+    fetchMflSiteExport('topStarters', { JSON: '1', W: String(selectedWeek), COUNT: '5000' }, { revalidate: 5 * 60 }),
   ]);
 
-  if (!rosterResponse.ok || !rosterStatusResponse.ok) {
+  if (!rosterResponse.ok || !weeklyResultsResponse.ok) {
     return { ok: false as const, message: 'Lineup data could not be loaded.' };
   }
 
-  const [rosterPayload, rosterStatusPayload, projectedScoresPayload, injuriesPayload, topStartersPayload, schedulePayloads] = await Promise.all([
+  const [rosterPayload, weeklyResultsPayload, projectedScoresPayload, injuriesPayload, topStartersPayload, schedulePayloads] = await Promise.all([
     rosterResponse.json().catch(() => null),
-    rosterStatusResponse.json().catch(() => null),
+    weeklyResultsResponse.json().catch(() => null),
     projectedScoresResponse.json().catch(() => null),
     injuriesResponse.json().catch(() => null),
     topStartersResponse.json().catch(() => null),
@@ -779,10 +814,10 @@ async function loadLineupPayloads(sessionCookieValue: string | null, selectedWee
   ]);
 
   const rosterPlayers = parseRosterPlayers(rosterPayload);
-  const rosterStatuses = parseRosterStatus(rosterStatusPayload);
   const projectedScores = parseProjectedScores(projectedScoresPayload);
   const injuries = parseInjuries(injuriesPayload);
   const topStarters = parseTopStarters(topStartersPayload);
+  const startRanks = deriveStartRanks(topStarters, playersDirectory);
   const scheduleByWeek = new Map<number, Set<string>>();
   let scheduleMap = new Map<string, { opponent: string | null; homeAway: 'home' | 'away' | null; kickoffUtc: number | null; kickoffLocal: string | null }>();
   let canDeriveByes = true;
@@ -801,19 +836,17 @@ async function loadLineupPayloads(sessionCookieValue: string | null, selectedWee
 
   const byeWeeksByTeam = canDeriveByes ? deriveTeamByeWeeks(scheduleByWeek, schedule.weeks) : new Map<string, number | null>();
 
-  const selectedStarterIds = new Set<string>();
-  for (const [id, rosterStatus] of rosterStatuses.entries()) {
-    if (rosterStatus.status === 'S') selectedStarterIds.add(id);
-  }
+  const submittedLineup = parseSubmittedLineup(weeklyResultsPayload, franchiseId);
+  const selectedStarterIds = submittedLineup.starterIds;
 
   const rows = buildRows({
     rosterPlayers,
     playersDirectory,
-    rosterStatuses,
     schedule: scheduleMap,
     projectedScores,
     injuries,
     topStarters,
+    startRanks,
     selectedStarterIds,
     selectedWeek,
     byeWeeksByTeam,
@@ -832,6 +865,7 @@ async function loadLineupPayloads(sessionCookieValue: string | null, selectedWee
     rules,
     rows,
     summary,
+    hasSubmittedLineup: submittedLineup.found,
     submittedAt: null,
     rosterPlayerIds: new Set([...rosterPlayers.keys()]),
     playersById: rows.reduce((map, row) => {
@@ -857,6 +891,7 @@ export async function loadLineupPageState(sessionCookieValue: string | null, sel
     rules: payload.rules,
     rows: payload.rows,
     summary: payload.summary,
+    hasSubmittedLineup: payload.hasSubmittedLineup,
     submittedAt: payload.submittedAt,
   };
 }
@@ -1029,9 +1064,14 @@ export async function importLineupSubmission(args: {
     return { ok: false, status: 400, message: 'Lineup submission failed.' };
   }
 
+  const responseText = await response.text();
+  if (/\berror\b|<error[\s>]/i.test(responseText) && !/^ok$/i.test(responseText.trim())) {
+    return { ok: false, status: 400, message: 'MFL rejected the lineup submission.' };
+  }
+
   const verifyResponse = await fetchMflExport(
-    'playerRosterStatus',
-    { FRANCHISE: args.franchiseId, W: String(args.week), JSON: '1' },
+    'weeklyResults',
+    { W: String(args.week), JSON: '1' },
     { sessionCookieValue: args.sessionCookieValue, cache: 'no-store' },
   );
 
@@ -1040,13 +1080,13 @@ export async function importLineupSubmission(args: {
   }
 
   const verifyPayload = await verifyResponse.json().catch(() => null);
-  const statuses = parseRosterStatus(verifyPayload);
-  const actualStarters = [...statuses.entries()].filter(([, value]) => value.status === 'S').map(([id]) => id).sort();
+  const verifiedLineup = parseSubmittedLineup(verifyPayload, args.franchiseId);
+  const actualStarters = [...verifiedLineup.starterIds].sort();
   const intendedStarters = [...validation.normalizedStarters].sort();
 
   if (actualStarters.length !== intendedStarters.length || actualStarters.some((id, index) => id !== intendedStarters[index])) {
     return { ok: false, status: 409, message: 'Lineup import succeeded but verification did not match the submitted starters.' };
   }
 
-  return { ok: true, normalizedStarters: validation.normalizedStarters, confirmed: true, submittedAt: new Date().toISOString(), actualStarters };
+  return { ok: true, normalizedStarters: validation.normalizedStarters, confirmed: true, actualStarters };
 }

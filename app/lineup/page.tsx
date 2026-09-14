@@ -15,5 +15,5 @@ export default async function LineupPage({
   const sessionCookieValue = await getMflSessionCookieValue();
   const state = await loadLineupPageState(sessionCookieValue, weekParam);
 
-  return <LineupEditor state={state} />;
+  return <LineupEditor key={`${state.franchiseId ?? 'unknown'}:${state.selectedWeek ?? 'unknown'}`} state={state} />;
 }

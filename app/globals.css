@@ -614,9 +614,7 @@ textarea {
 }
 
 .lineup-footer {
-  position: sticky;
-  bottom: calc(88px + env(safe-area-inset-bottom));
-  z-index: 5;
+  position: static;
   backdrop-filter: blur(14px);
 }
 
