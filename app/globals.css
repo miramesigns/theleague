@@ -785,6 +785,48 @@ textarea {
   overflow: hidden;
 }
 
+.all-rosters-controls {
+  display: grid;
+  gap: 10px;
+}
+
+.team-picker {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.team-picker label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.team-picker select {
+  min-width: min(100%, 280px);
+}
+
+.auto-refresh {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.roster-team-banner {
+  margin: -16px -16px 0;
+  padding: 16px;
+}
+
+.roster-team-banner h2 {
+  margin: 3px 0 0;
+  font-size: 1.15rem;
+}
+
 .roster-scroll {
   overflow-x: auto;
 }

@@ -29,7 +29,7 @@ export type RosterPageState = {
   summary: { rosterCount: number; ytdPoints: number | null; salary: number | null };
 };
 
-type RosterPayloads = {
+export type RosterPayloads = {
   franchiseId: string;
   franchiseName: string | null;
   roster: unknown;
@@ -127,14 +127,14 @@ function unavailableSummary(rows: RosterRow[], key: 'ytdPoints' | 'salary'): num
     : null;
 }
 
-function parseScheduleWeeks(payload: unknown): number[] {
+export function parseScheduleWeeks(payload: unknown): number[] {
   const schedule = record(record(payload)?.schedule);
   const entries = records(schedule?.weeklySchedule ?? schedule?.week ?? schedule?.weeks);
   return [...new Set(entries.map((entry) => integerValue(entry.week ?? entry.W ?? entry.number)).filter((week): week is number => week !== null))]
     .sort((left, right) => left - right);
 }
 
-function parseNflScheduleTeams(payload: unknown): Set<string> {
+export function parseNflScheduleTeams(payload: unknown): Set<string> {
   const schedule = record(record(payload)?.nflSchedule);
   const matchups = records(schedule?.matchup);
   const teams = new Set<string>();
