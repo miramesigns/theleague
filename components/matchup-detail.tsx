@@ -21,9 +21,7 @@ function PlayerRow({ player, source }: { player: MatchupPlayer; source: MatchupD
     <div className="player-row">
       <div className="player-main">
         <div className="player-name">{player.name}</div>
-        <div className="player-meta">
-          {player.position} · {player.id}
-        </div>
+        <div className="player-meta">{player.position} · {player.id}</div>
       </div>
       <div className="player-side">
         <div className="player-score">{score}</div>
@@ -33,66 +31,75 @@ function PlayerRow({ player, source }: { player: MatchupPlayer; source: MatchupD
   );
 }
 
-function PositionGroup({ label, players, source }: { label: string; players: MatchupPlayer[]; source: MatchupDetailState['source'] }) {
+function TeamScoreCard({ team, isPrimary }: { team: MatchupTeam; isPrimary: boolean }) {
   return (
-    <div>
-      <div className="section-label">{label}</div>
-      <div className="player-list">
-        {players.map((player) => (
-          <PlayerRow key={player.id} player={player} source={source} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function TeamPanel({ team, source, primaryTeamId }: { team: MatchupTeam; source: MatchupDetailState['source']; primaryTeamId: string | null }) {
-  const grouped = groupPlayers(team.players);
-  const starterGroups = groupPlayersByPosition(grouped.starters);
-  const benchGroups = groupPlayersByPosition(grouped.bench);
-
-  return (
-    <section className={`panel section matchup-team${team.teamId === primaryTeamId ? ' primary' : ''}`}>
-      <div className="matchup-team-head">
+    <section className={`matchup-score-card${isPrimary ? ' primary' : ''}`} aria-label={`${team.teamName} score`}>
+      <div className="matchup-score-card-head">
         <div>
           <div className="eyebrow">{team.isHome ? 'Home' : 'Away'}</div>
           <div className="team-name">{team.teamName}</div>
         </div>
-        <div className="team-side-score">
-          <div className="team-score">{formatScore(team.score)}</div>
-          <span className={`tag ${team.status.toLowerCase()}`}>{team.status}</span>
-        </div>
+        <span className={`tag ${team.status.toLowerCase()}`}>{team.status}</span>
       </div>
-
+      <div className="team-score">{formatScore(team.score)}</div>
       <MatchupSummary team={team} showUnavailableChance={team.summary.winChance === null} />
+    </section>
+  );
+}
 
-      <div className="stack">
-        <div>
-          <div className="section-label">Starters</div>
-          {starterGroups.length > 0 ? (
-            <div className="stack">
-              {starterGroups.map((group) => (
-                <PositionGroup key={group.position} label={group.position} players={group.players} source={source} />
-              ))}
-            </div>
-          ) : (
-            <div className="small muted">No starter details available for this state.</div>
-          )}
-        </div>
+function PositionComparison({ position, homePlayers, awayPlayers, source }: {
+  position: string;
+  homePlayers: MatchupPlayer[];
+  awayPlayers: MatchupPlayer[];
+  source: MatchupDetailState['source'];
+}) {
+  const rowCount = Math.max(homePlayers.length, awayPlayers.length, 1);
 
-        <div>
-          <div className="section-label">Bench / Reserves</div>
-          {benchGroups.length > 0 ? (
-            <div className="stack">
-              {benchGroups.map((group) => (
-                <PositionGroup key={group.position} label={group.position} players={group.players} source={source} />
-              ))}
-            </div>
-          ) : (
-            <div className="small muted">No bench or reserve details available for this state.</div>
-          )}
-        </div>
+  return (
+    <section className="matchup-position-group">
+      <h3 className="section-label">{position}</h3>
+      <div className="matchup-position-grid">
+        {Array.from({ length: rowCount }, (_, index) => (
+          <div className="matchup-player-pair" key={`${position}-${index}`}>
+            {homePlayers[index] ? <PlayerRow player={homePlayers[index]} source={source} /> : <div className="player-row player-row-empty">—</div>}
+            {awayPlayers[index] ? <PlayerRow player={awayPlayers[index]} source={source} /> : <div className="player-row player-row-empty">—</div>}
+          </div>
+        ))}
       </div>
+    </section>
+  );
+}
+
+function RosterComparison({ label, homePlayers, awayPlayers, source }: {
+  label: string;
+  homePlayers: MatchupPlayer[];
+  awayPlayers: MatchupPlayer[];
+  source: MatchupDetailState['source'];
+}) {
+  const homeGroups = groupPlayersByPosition(homePlayers);
+  const awayGroups = groupPlayersByPosition(awayPlayers);
+  const positions = [...new Set([...homeGroups.map((group) => group.position), ...awayGroups.map((group) => group.position)])];
+  const homeByPosition = new Map(homeGroups.map((group) => [group.position, group.players]));
+  const awayByPosition = new Map(awayGroups.map((group) => [group.position, group.players]));
+
+  return (
+    <section className="panel section matchup-roster-comparison">
+      <h2>{label}</h2>
+      {positions.length > 0 ? (
+        <div className="stack">
+          {positions.map((position) => (
+            <PositionComparison
+              key={position}
+              position={position}
+              homePlayers={homeByPosition.get(position) ?? []}
+              awayPlayers={awayByPosition.get(position) ?? []}
+              source={source}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="small muted">No {label.toLowerCase()} details available for this state.</div>
+      )}
     </section>
   );
 }
@@ -112,14 +119,9 @@ export function MatchupDetail({ source, message, currentWeek, selectedWeek, matc
     );
   }
 
-  const statusLabel =
-    source === 'live'
-      ? 'Live feed'
-      : source === 'results'
-        ? 'Results'
-        : source === 'schedule'
-          ? 'Schedule'
-          : 'Unavailable';
+  const statusLabel = source === 'live' ? 'Live feed' : source === 'results' ? 'Results' : source === 'schedule' ? 'Schedule' : 'Unavailable';
+  const homePlayers = groupPlayers(matchup.home.players);
+  const awayPlayers = groupPlayers(matchup.away.players);
 
   return (
     <section className="grid matchup-detail-view">
@@ -143,24 +145,19 @@ export function MatchupDetail({ source, message, currentWeek, selectedWeek, matc
           {matchup.primaryTeamId ? <span className="pill">My matchup</span> : null}
         </div>
 
-        <div className="matchup-scoreline">
-          <div>
-            <div className="small muted">{matchup.home.teamName}</div>
-            <div className="team-score">{formatScore(matchup.home.score)}</div>
-          </div>
-          <div className="matchup-vs">vs</div>
-          <div className="matchup-scoreline-team matchup-scoreline-away">
-            <div className="small muted">{matchup.away.teamName}</div>
-            <div className="team-score">{formatScore(matchup.away.score)}</div>
-          </div>
+        <div className="matchup-score-cards">
+          <TeamScoreCard team={matchup.home} isPrimary={matchup.home.teamId === matchup.primaryTeamId} />
+          <TeamScoreCard team={matchup.away} isPrimary={matchup.away.teamId === matchup.primaryTeamId} />
         </div>
-
       </article>
 
-      <div className="matchup-columns">
-        <TeamPanel team={matchup.home} source={source} primaryTeamId={matchup.primaryTeamId} />
-        <TeamPanel team={matchup.away} source={source} primaryTeamId={matchup.primaryTeamId} />
+      <div className="matchup-comparison-head" aria-hidden="true">
+        <div>{matchup.home.teamName}</div>
+        <div>{matchup.away.teamName}</div>
       </div>
+
+      <RosterComparison label="Starters" homePlayers={homePlayers.starters} awayPlayers={awayPlayers.starters} source={source} />
+      <RosterComparison label="Bench / Reserves" homePlayers={homePlayers.bench} awayPlayers={awayPlayers.bench} source={source} />
     </section>
   );
 }
