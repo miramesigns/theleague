@@ -1,4 +1,5 @@
 import { Fragment } from 'react';
+import Link from 'next/link';
 import { getMflSessionCookieValue } from '@/lib/mfl-session';
 import { formatRosterSalary, groupRosterRows, loadRosterPageState } from '@/lib/mfl-roster';
 
@@ -18,7 +19,10 @@ export default async function RosterPage() {
       <div className="banner">
         <div>
           <div className="eyebrow">Roster</div>
-          <div className="small muted">{state.franchiseName ?? 'Authenticated MFL owner roster'}</div>
+          <div className="roster-banner-team">
+            <strong className="roster-banner-name">{state.franchiseName ?? 'Authenticated MFL owner roster'}</strong>
+            <Link className="roster-quick-link" href="/all-rosters">All Rosters</Link>
+          </div>
         </div>
         <span className="pill">{state.rows.length} players</span>
       </div>

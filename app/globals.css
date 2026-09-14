@@ -903,6 +903,36 @@ textarea {
   font-size: 1.15rem;
 }
 
+.roster-banner-team {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 3px;
+}
+
+.roster-banner-name {
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.roster-quick-link {
+  color: #a5f3fc;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border: 1px solid rgba(34, 211, 238, 0.3);
+  border-radius: 999px;
+  background: rgba(8, 145, 178, 0.1);
+}
+
+.roster-quick-link:hover,
+.roster-quick-link:focus-visible {
+  color: #fff;
+  border-color: rgba(34, 211, 238, 0.65);
+}
+
 .roster-scroll {
   overflow-x: auto;
 }
