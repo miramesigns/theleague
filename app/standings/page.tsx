@@ -17,6 +17,10 @@ function gamesBack(value: number): string {
   return value === 0 ? '—' : Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
+function displayTeamName(teamName: string): string {
+  return teamName.replace(/\s*-\s*YOU KNOW WHY I'?M HERE\s*$/i, '').trim();
+}
+
 function StandingCard({ row }: { row: StandingRow }) {
   const metrics = [
     ['PCT', percentage(row.winPct)],
@@ -36,7 +40,7 @@ function StandingCard({ row }: { row: StandingRow }) {
       <header className="standing-card-head">
         <span className="standing-rank">{row.rank}</span>
         <div>
-          <div className="team-name">{row.teamName}</div>
+          <div className="team-name">{displayTeamName(row.teamName)}</div>
           <div className="standing-record">{row.record}</div>
         </div>
         {row.isPrimary ? <span className="tag live">My team</span> : null}
@@ -94,7 +98,7 @@ export default async function StandingsPage() {
                   <tr className="standings-division-row"><th colSpan={12} scope="colgroup">{division.name} Division</th></tr>
                   {division.rows.map((row) => (
                     <tr key={row.franchiseId} className={row.isPrimary ? 'primary' : undefined}>
-                      <th scope="row">{row.rank}. {row.teamName}</th>
+                      <th scope="row">{row.rank}. {displayTeamName(row.teamName)}</th>
                       <td>{row.record}</td>
                       <td>{percentage(row.winPct)}</td>
                       <td>{gamesBack(row.gamesBack)}</td>
