@@ -318,6 +318,11 @@ textarea {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+  align-items: stretch;
+}
+
+.matchup-columns > .panel + .panel {
+  margin-top: 0;
 }
 
 .matchup-scoreline {
@@ -802,9 +807,14 @@ textarea {
 
   .matchup-team-head,
   .matchup-scoreline,
+  .matchup-summary-row,
   .player-row {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .matchup-summary-row {
+    gap: 4px;
   }
 
   .team-side-score,

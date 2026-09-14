@@ -64,6 +64,8 @@ function TeamPanel({ team, source, primaryTeamId }: { team: MatchupTeam; source:
         </div>
       </div>
 
+      <MatchupSummary team={team} showUnavailableChance={team.summary.winChance === null} />
+
       <div className="stack">
         <div>
           <div className="section-label">Starters</div>
@@ -153,10 +155,6 @@ export function MatchupDetail({ source, message, currentWeek, selectedWeek, matc
           </div>
         </div>
 
-        <div className="matchup-header-summaries">
-          <MatchupSummary team={matchup.home} showUnavailableChance={matchup.home.summary.winChance === null} />
-          <MatchupSummary team={matchup.away} showUnavailableChance={matchup.away.summary.winChance === null} />
-        </div>
       </article>
 
       <div className="matchup-columns">
