@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="MFL League Companion">
+  <defs>
+    <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="120" fill="#08111f"/>
+  <path d="M108 326V184l64 92 64-92v142" fill="none" stroke="url(#g)" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M272 326V184l64 92 64-92v142" fill="none" stroke="#f8fafc" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="256" cy="256" r="170" fill="none" stroke="#1f2937" stroke-width="18"/>
+</svg>

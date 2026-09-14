@@ -1,0 +1,1030 @@
+import { resolvePrimaryFranchiseId } from './mfl-scores.ts';
+import { fetchMflExport, fetchMflSiteExport, getMflConfig } from './mfl.ts';
+
+type JsonRecord = Record<string, any>;
+
+export type LineupRulePosition = {
+  position: string;
+  min: number;
+  max: number;
+};
+
+export type LineupRules = {
+  positions: LineupRulePosition[];
+  flexSlots: number;
+  flexEligiblePositions: string[];
+  totalMin: number;
+  totalMax: number;
+};
+
+export type LineupRosterSnapshot = {
+  id: string;
+  name: string;
+  position: string;
+  team: string | null;
+  rosterStatus: 'S' | 'B' | 'IR' | 'TAXI' | 'RESERVE' | 'UNKNOWN';
+  locked: boolean;
+  selected: boolean;
+  bye: string | null;
+  opponent: string | null;
+  homeAway: 'home' | 'away' | null;
+  kickoffUtc: number | null;
+  kickoffLocal: string | null;
+  injury: string | null;
+  projection: number | null;
+  startPercentage: number | null;
+  rosterRank: number | null;
+  statusText: string;
+  availability: 'available' | 'locked' | 'bye' | 'injured' | 'unknown';
+  canToggle: boolean;
+  group: 'QB' | 'RB' | 'WR' | 'TE' | 'PK' | 'DEF' | 'OTHER';
+};
+
+export type LineupPageSummary = {
+  totalSelected: number;
+  totalMin: number;
+  totalMax: number;
+  legal: boolean;
+  problems: string[];
+  perPosition: Record<string, { selected: number; min: number; max: number }>;
+};
+
+export type LineupPageState = {
+  ok: boolean;
+  message: string;
+  franchiseId: string | null;
+  franchiseName: string | null;
+  currentWeek: number | null;
+  selectedWeek: number | null;
+  availableWeeks: number[];
+  rules: LineupRules | null;
+  rows: LineupRosterSnapshot[];
+  summary: LineupPageSummary;
+  submittedAt: string | null;
+};
+
+export type LineupSubmissionContext = LineupPageState & {
+  rosterPlayerIds: Set<string>;
+  playersById: Map<string, LineupRosterSnapshot>;
+  currentStarterIds: string[];
+  rules: LineupRules;
+};
+
+export type LineupRowMeta = {
+  matchupText: string;
+  metricsText: string;
+  compactText: string;
+  ariaLabel: string;
+};
+
+export type LineupSubmissionInput = {
+  week: number;
+  starters: string[];
+  comments?: string;
+  clear?: boolean;
+};
+
+export class LineupLoadError extends Error {
+  readonly status: 400 | 401 | 503;
+
+  constructor(
+    status: 400 | 401 | 503,
+    message: string,
+  ) {
+    super(message);
+    this.status = status;
+    this.name = 'LineupLoadError';
+  }
+}
+
+export type LineupValidationResult =
+  | { ok: true; normalizedStarters: string[] }
+  | { ok: false; status: 400 | 401 | 403 | 409 | 429 | 502 | 503; message: string };
+
+function toRecord(value: unknown): JsonRecord | null {
+  return value && typeof value === 'object' ? (value as JsonRecord) : null;
+}
+
+function toArray(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === 'object') return [value];
+  return [];
+}
+
+function toRecords(value: unknown): JsonRecord[] {
+  return toArray(value).filter((entry): entry is JsonRecord => Boolean(entry) && typeof entry === 'object');
+}
+
+function extractText(value: unknown): string {
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number') return String(value);
+  if (value && typeof value === 'object') {
+    const record = value as JsonRecord;
+    for (const key of ['#text', 'name', 'title', 'position', 'id', 'team', 'franchise_name']) {
+      const nested = record[key];
+      if (typeof nested === 'string' && nested.trim()) return nested.trim();
+      if (typeof nested === 'number') return String(nested);
+    }
+  }
+  return '';
+}
+
+function safeNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function safeInteger(value: unknown): number | null {
+  const parsed = safeNumber(value);
+  return parsed !== null && Number.isInteger(parsed) ? parsed : null;
+}
+
+function parseBooleanish(value: unknown): boolean {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'y';
+  }
+  return Boolean(value);
+}
+
+function normalizePosition(value: string): string {
+  const upper = value.trim().toUpperCase();
+  if (upper === 'DEF') return 'Def';
+  return upper;
+}
+
+function groupPosition(position: string): LineupRosterSnapshot['group'] {
+  const normalized = normalizePosition(position);
+  if (normalized === 'DEF') return 'DEF';
+  if (normalized === 'QB' || normalized === 'RB' || normalized === 'WR' || normalized === 'TE' || normalized === 'PK') {
+    return normalized;
+  }
+  return 'OTHER';
+}
+
+function formatEtKickoff(kickoffUtcSeconds: number): string {
+  const date = new Date(kickoffUtcSeconds * 1000);
+  if (Number.isNaN(date.getTime())) return 'Unavailable';
+
+  const dateFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+  const timeFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+
+  return `${dateFormatter.format(date)} ${timeFormatter.format(date)} ET`;
+}
+
+function parseCommaList(value: unknown): string[] {
+  const text = extractText(value);
+  if (!text) return [];
+  return text
+    .split(/[\/,|]/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map(normalizePosition);
+}
+
+function parseLimitRange(value: unknown): { min: number; max: number } | null {
+  const text = extractText(value);
+  if (!text) return null;
+
+  const match = text.match(/^(\d+)(?:\s*-\s*(\d+))?$/);
+  if (!match) return null;
+
+  const min = Number(match[1]);
+  const max = Number(match[2] ?? match[1]);
+  if (!Number.isInteger(min) || !Number.isInteger(max) || min <= 0 || max <= 0) return null;
+
+  return { min: Math.min(min, max), max: Math.max(min, max) };
+}
+
+function parseLineupSlot(entry: JsonRecord): { position: string; min: number; max: number; flexEligible?: string[]; flexSlots?: number } | null {
+  const position = extractText(entry.position ?? entry.pos ?? entry.slot ?? entry.label ?? entry.name);
+  if (!position) return null;
+
+  const limit = parseLimitRange(entry.limit ?? entry.range);
+  const min = safeInteger(entry.min ?? entry.minimum ?? entry.required ?? entry.count) ?? limit?.min ?? 1;
+  const max = safeInteger(entry.max ?? entry.maximum ?? entry.count ?? entry.required) ?? limit?.max ?? min;
+  const flexEligible = parseCommaList(entry.eligible ?? entry.allowed ?? entry.flexEligible ?? entry.positions);
+  const isFlex = flexEligible.length > 0 || /flex/i.test(position) || Boolean(entry.flex);
+
+  return {
+    position: normalizePosition(position),
+    min,
+    max: Math.max(min, max),
+    ...(isFlex ? { flexEligible: flexEligible.length > 0 ? flexEligible : ['RB', 'WR', 'TE'], flexSlots: safeInteger(entry.flex ?? entry.slots ?? entry.count) ?? 1 } : {}),
+  };
+}
+
+function collectLineupEntries(leaguePayload: unknown): JsonRecord[] {
+  const league = toRecord(leaguePayload)?.league;
+  const record = toRecord(league);
+  const candidates = [
+    toRecords(toRecord(record?.starters)?.position),
+    toRecords(toRecord(record?.rosterPositions)?.rosterPosition),
+    toRecords(toRecord(toRecord(record?.lineup)?.startingLineup)?.lineupSlot),
+    toRecords(toRecord(record?.startingLineup)?.lineupSlot),
+    toRecords(record?.lineupPosition),
+    toRecords(record?.rosterPosition),
+  ];
+
+  return candidates.flat().filter((entry) => Object.keys(entry).length > 0);
+}
+
+export function parseLineupRules(leaguePayload: unknown): LineupRules {
+  const leagueRecord = toRecord(toRecord(leaguePayload)?.league) as JsonRecord | null;
+  const entries = collectLineupEntries(leaguePayload);
+  const positions: LineupRulePosition[] = [];
+  const flexEligible = new Set<string>();
+  let flexSlots = 0;
+
+  for (const entry of entries) {
+    const parsed = parseLineupSlot(entry);
+    if (!parsed) continue;
+    if (parsed.flexEligible && parsed.flexEligible.length > 0) {
+      for (const position of parsed.flexEligible) flexEligible.add(position);
+      flexSlots += parsed.flexSlots ?? 1;
+      continue;
+    }
+
+    if (!positions.some((position) => position.position === parsed.position)) {
+      positions.push({ position: parsed.position, min: parsed.min, max: parsed.max });
+    }
+  }
+
+  if (positions.length === 0) {
+    throw new Error('Unable to parse lineup rules.');
+  }
+
+  const derivedTotalMin = positions.reduce((sum, position) => sum + position.min, 0) + flexSlots;
+  const derivedTotalMax = positions.reduce((sum, position) => sum + position.max, 0) + flexSlots;
+  const startersCount = safeInteger(leagueRecord?.starters && toRecord(leagueRecord.starters)?.count);
+  const useExactStarterCount =
+    startersCount !== null &&
+    toRecords(toRecord(leagueRecord?.starters)?.position).length > 0 &&
+    startersCount >= derivedTotalMin &&
+    startersCount <= derivedTotalMax;
+
+  return {
+    positions,
+    flexSlots,
+    flexEligiblePositions: [...flexEligible],
+    totalMin: useExactStarterCount ? startersCount : derivedTotalMin,
+    totalMax: useExactStarterCount ? startersCount : derivedTotalMax,
+  };
+}
+
+function parseScheduleWeeks(schedulePayload: unknown): { currentWeek: number | null; weeks: number[] } | null {
+  const scheduleRoot = toRecord(schedulePayload)?.schedule;
+  const record = toRecord(scheduleRoot) as JsonRecord | null;
+  const weeks = new Set<number>();
+
+  for (const source of [
+    toRecords(record?.weeklySchedule?.week),
+    toRecords(record?.weeklySchedule),
+    toRecords(record?.week),
+    toRecords(record?.weeks),
+  ]) {
+    for (const entry of source) {
+      const week = safeInteger(entry.week ?? entry.W ?? entry.number ?? entry.value);
+      if (week !== null) weeks.add(week);
+    }
+  }
+
+  const currentWeek = safeInteger(record?.currentWeek ?? record?.current_week ?? record?.week);
+  const sortedWeeks = [...weeks].sort((left, right) => left - right);
+  if (sortedWeeks.length === 0) return null;
+
+  return { currentWeek, weeks: sortedWeeks };
+}
+
+function parseLeagueFranchises(leaguePayload: unknown): Map<string, string> {
+  const league = toRecord(leaguePayload)?.league;
+  const leagueRecord = toRecord(league) as JsonRecord | null;
+  const franchises = toRecords((leagueRecord?.franchises as JsonRecord | undefined)?.franchise ?? leagueRecord?.franchise);
+  const names = new Map<string, string>();
+
+  for (const franchise of franchises) {
+    const id = extractText(franchise.id ?? franchise.franchise_id ?? franchise.franchiseId);
+    if (!id) continue;
+    const name = extractText(franchise.name ?? franchise.franchise_name ?? franchise.franchiseName) || `Franchise ${id}`;
+    names.set(id, name);
+  }
+
+  return names;
+}
+
+function parsePlayersDirectory(playersPayload: unknown): Map<string, { name: string; position: string; team: string | null }> {
+  const playersRoot = toRecord(playersPayload) as JsonRecord | null;
+  const players = toRecords((playersRoot?.players as JsonRecord | undefined)?.player ?? playersRoot?.player);
+  const result = new Map<string, { name: string; position: string; team: string | null }>();
+
+  for (const player of players) {
+    const id = extractText(player.id ?? player.playerId ?? player.player_id);
+    if (!id) continue;
+    result.set(id, {
+      name: extractText(player.name ?? player.full_name ?? player.fullName ?? player.title) || `Player ${id}`,
+      position: normalizePosition(extractText(player.position ?? player.pos ?? player.fantasy_position) || 'UNK'),
+      team: extractText(player.team ?? player.nfl_team ?? player.nflTeam) || null,
+    });
+  }
+
+  return result;
+}
+
+function isGeneratedRosterName(name: string, id: string): boolean {
+  const normalized = name.trim();
+  if (!normalized) return true;
+  if (normalized === `Player ${id}`) return true;
+  if (/^player\s+\d+$/i.test(normalized)) return true;
+  if (/^(tbd|unknown|unavailable|placeholder|n\/a|--+)$/i.test(normalized)) return true;
+  if (/^\d+$/.test(normalized)) return true;
+  return false;
+}
+
+export function resolveRosterPlayerName(playerName: string, directoryName: string | null, id: string): string {
+  if (!isGeneratedRosterName(playerName, id)) {
+    return playerName.trim();
+  }
+
+  if (directoryName && !isGeneratedRosterName(directoryName, id)) {
+    return directoryName.trim();
+  }
+
+  return `Player ${id}`;
+}
+
+function parseProjectedScores(payload: unknown): Map<string, number> {
+  const root = toRecord(payload) as JsonRecord | null;
+  const players = toRecords((root?.projectedScores as JsonRecord | undefined)?.player ?? (root?.projectedScores as JsonRecord | undefined)?.players ?? root?.player);
+  const result = new Map<string, number>();
+  for (const player of players) {
+    const id = extractText(player.id);
+    const score = safeNumber(player.score ?? player.points ?? player.projection);
+    if (id && score !== null) result.set(id, score);
+  }
+  return result;
+}
+
+function parseInjuries(payload: unknown): Map<string, string> {
+  const root = toRecord(payload) as JsonRecord | null;
+  const players = toRecords((root?.injuries as JsonRecord | undefined)?.player ?? root?.player);
+  const result = new Map<string, string>();
+  for (const player of players) {
+    const id = extractText(player.id);
+    const designation = extractText(player.designation ?? player.injury ?? player.status);
+    if (id && designation) result.set(id, designation);
+  }
+  return result;
+}
+
+function parseTopStarters(payload: unknown): Map<string, number> {
+  const root = toRecord(payload) as JsonRecord | null;
+  const players = toRecords((root?.topStarters as JsonRecord | undefined)?.player ?? root?.player);
+  const result = new Map<string, number>();
+  for (const player of players) {
+    const id = extractText(player.id);
+    const percentage = safeNumber(player.startPercentage ?? player.percentage ?? player.rate);
+    if (id && percentage !== null) result.set(id, percentage);
+  }
+  return result;
+}
+
+function parseRosterStatus(payload: unknown): Map<string, { status: LineupRosterSnapshot['rosterStatus']; locked: boolean }> {
+  const root = toRecord(payload) as JsonRecord | null;
+  const players = toRecords((root?.playerRosterStatus as JsonRecord | undefined)?.player ?? (root?.rosterStatus as JsonRecord | undefined)?.player ?? root?.player);
+  const result = new Map<string, { status: LineupRosterSnapshot['rosterStatus']; locked: boolean }>();
+
+  for (const player of players) {
+    const id = extractText(player.id ?? player.player_id ?? player.playerId);
+    if (!id) continue;
+
+    const rawStatus = extractText(player.status ?? player.rosterStatus ?? player.lineupStatus ?? player.slot);
+    const upper = rawStatus.toUpperCase();
+    let status: LineupRosterSnapshot['rosterStatus'] = 'UNKNOWN';
+    if (upper === 'S' || upper === 'STARTER') status = 'S';
+    else if (upper === 'B' || upper === 'BENCH') status = 'B';
+    else if (upper === 'IR') status = 'IR';
+    else if (upper === 'TAXI') status = 'TAXI';
+    else if (upper === 'RESERVE') status = 'RESERVE';
+
+    const locked = parseBooleanish(player.locked ?? player.lock ?? player.isLocked ?? player.started ?? player.startLocked);
+    result.set(id, { status, locked });
+  }
+
+  return result;
+}
+
+function parseRosterPlayers(payload: unknown): Map<string, { id: string; name: string; position: string; team: string | null }> {
+  const root = toRecord(payload) as JsonRecord | null;
+  const candidateSets = [
+    toRecords(root?.rosters?.franchise?.player),
+    toRecords(root?.roster?.franchise?.player),
+    toRecords(root?.franchise?.player),
+    toRecords(root?.players?.player),
+    toRecords(root?.player),
+  ];
+  const players = candidateSets.find((entries) => entries.length > 0) ?? [];
+  const result = new Map<string, { id: string; name: string; position: string; team: string | null }>();
+
+  for (const player of players) {
+    const id = extractText(player.id ?? player.player_id ?? player.playerId);
+    if (!id) continue;
+    result.set(id, {
+      id,
+      name: extractText(player.name ?? player.full_name ?? player.title ?? player.player_name) || `Player ${id}`,
+      position: normalizePosition(extractText(player.position ?? player.pos ?? player.rosterPosition ?? player.fantasy_position) || 'UNK'),
+      team: extractText(player.team ?? player.nfl_team ?? player.nflTeam) || null,
+    });
+  }
+
+  return result;
+}
+
+export function formatLineupRowMeta(row: Pick<LineupRosterSnapshot, 'name' | 'position' | 'team' | 'opponent' | 'homeAway' | 'bye' | 'projection' | 'startPercentage'>): LineupRowMeta {
+  const matchupText = row.bye
+    ? 'Bye'
+    : row.opponent && row.homeAway
+      ? `${row.homeAway === 'home' ? 'vs' : '@'} ${row.opponent}`
+      : '-- / --';
+  const metricsText = row.projection !== null && row.startPercentage !== null
+    ? `${Number.isInteger(row.projection) ? String(row.projection) : row.projection.toFixed(1)} / ${row.startPercentage}%`
+    : '-- / --';
+  const compactText = `${row.position} · ${row.team ?? '--'} · ${matchupText} · ${metricsText}`;
+
+  return {
+    matchupText,
+    metricsText,
+    compactText,
+    ariaLabel: `${row.name}. ${compactText}.`,
+  };
+}
+
+export function deriveTeamByeWeeks(scheduleWeeks: Map<number, Set<string>>, regularWeeks: number[]): Map<string, number | null> {
+  const teams = new Map<string, Set<number>>();
+
+  for (const week of regularWeeks) {
+    const weekTeams = scheduleWeeks.get(week) ?? new Set<string>();
+    for (const team of weekTeams) {
+      const weeks = teams.get(team) ?? new Set<number>();
+      weeks.add(week);
+      teams.set(team, weeks);
+    }
+  }
+
+  const result = new Map<string, number | null>();
+
+  for (const [team, weeksPresent] of teams.entries()) {
+    const missingWeeks = regularWeeks.filter((week) => !weeksPresent.has(week));
+    result.set(team, missingWeeks.length === 1 ? missingWeeks[0] : null);
+  }
+
+  return result;
+}
+
+function parseNflSchedule(payload: unknown): Map<string, { opponent: string | null; homeAway: 'home' | 'away' | null; kickoffUtc: number | null; kickoffLocal: string | null }> {
+  const root = toRecord(payload) as JsonRecord | null;
+  const matchups = toRecords((root?.nflSchedule as JsonRecord | undefined)?.matchup ?? (root?.schedule as JsonRecord | undefined)?.matchup ?? root?.matchup);
+  const result = new Map<string, { opponent: string | null; homeAway: 'home' | 'away' | null; kickoffUtc: number | null; kickoffLocal: string | null }>();
+
+  for (const matchup of matchups) {
+    const kickoffUtc = safeNumber(matchup.kickoff ?? matchup.start ?? matchup.startTime);
+    const teams = toRecords(matchup.team);
+    if (teams.length !== 2) continue;
+
+    for (const team of teams) {
+      const id = extractText(team.id ?? team.team_id ?? team.teamId);
+      if (!id) continue;
+      const opponentTeam = teams.find((candidate) => extractText(candidate.id ?? candidate.team_id ?? candidate.teamId) !== id) ?? null;
+      const opponent = extractText(team.opponent) || extractText(opponentTeam?.id ?? opponentTeam?.team_id ?? opponentTeam?.teamId);
+      const homeAway = extractText(team.isHome).toLowerCase() === '1' || extractText(team.isHome).toLowerCase() === 'home' ? 'home' : extractText(team.isHome).toLowerCase() === '0' || extractText(team.isHome).toLowerCase() === 'away' ? 'away' : null;
+      result.set(id, {
+        opponent: opponent || null,
+        homeAway,
+        kickoffUtc: kickoffUtc !== null ? kickoffUtc : null,
+        kickoffLocal: kickoffUtc !== null ? formatEtKickoff(kickoffUtc) : null,
+      });
+    }
+  }
+
+  return result;
+}
+
+function chooseDefaultWeek(currentWeek: number | null, weeks: number[]): number | null {
+  if (weeks.length === 0) return null;
+  if (currentWeek !== null && weeks.includes(currentWeek)) return currentWeek;
+  if (currentWeek !== null) {
+    const upcoming = weeks.find((week) => week >= currentWeek);
+    if (upcoming !== undefined) return upcoming;
+  }
+  return weeks[0] ?? null;
+}
+
+function normalizeFranchiseId(value: unknown): string | null {
+  const text = extractText(value);
+  return /^\d{4}$/.test(text) ? text : null;
+}
+
+function parseWeekParam(weekParam: string | null | undefined): number | null | 'invalid' {
+  if (weekParam == null || weekParam.trim() === '') return null;
+  if (!/^\d+$/.test(weekParam.trim())) return 'invalid';
+  const parsed = Number(weekParam.trim());
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 'invalid';
+}
+
+function buildErrorState(message: string): LineupPageState {
+  return {
+    ok: false,
+    message,
+    franchiseId: null,
+    franchiseName: null,
+    currentWeek: null,
+    selectedWeek: null,
+    availableWeeks: [],
+    rules: null,
+    rows: [],
+    summary: { totalSelected: 0, totalMin: 0, totalMax: 0, legal: false, problems: [message], perPosition: {} },
+    submittedAt: null,
+  };
+}
+
+function summarizeRows(rules: LineupRules, rows: LineupRosterSnapshot[]): LineupPageSummary {
+  const perPosition: LineupPageSummary['perPosition'] = {};
+  for (const position of rules.positions) {
+    perPosition[position.position] = { selected: 0, min: position.min, max: position.max };
+  }
+
+  for (const row of rows) {
+    if (!row.selected) continue;
+    const bucket = perPosition[row.position] ?? (perPosition[row.position] = { selected: 0, min: 0, max: 0 });
+    bucket.selected += 1;
+  }
+
+  const totalSelected = rows.filter((row) => row.selected).length;
+  const problems: string[] = [];
+
+  for (const position of rules.positions) {
+    const selected = perPosition[position.position]?.selected ?? 0;
+    if (selected < position.min) problems.push(`Need ${position.min - selected} more ${position.position}.`);
+    if (selected > position.max) problems.push(`Too many ${position.position}.`);
+  }
+
+  const flexExtras = rules.flexEligiblePositions.reduce((sum, position) => {
+    const selected = perPosition[position]?.selected ?? 0;
+    const minimum = rules.positions.find((entry) => entry.position === position)?.min ?? 0;
+    return sum + Math.max(0, selected - minimum);
+  }, 0);
+
+  if (totalSelected < rules.totalMin) problems.push(`Need ${rules.totalMin - totalSelected} more total starters.`);
+  if (totalSelected > rules.totalMax) problems.push(`Too many total starters.`);
+  if (flexExtras > rules.flexSlots) problems.push(`Flex slots exceeded by ${flexExtras - rules.flexSlots}.`);
+
+  return {
+    totalSelected,
+    totalMin: rules.totalMin,
+    totalMax: rules.totalMax,
+    legal: problems.length === 0,
+    problems,
+    perPosition,
+  };
+}
+
+function buildRows(args: {
+  rosterPlayers: Map<string, { id: string; name: string; position: string; team: string | null }>;
+  playersDirectory: Map<string, { name: string; position: string; team: string | null }>;
+  rosterStatuses: Map<string, { status: LineupRosterSnapshot['rosterStatus']; locked: boolean }>;
+  projectedScores: Map<string, number>;
+  injuries: Map<string, string>;
+  topStarters: Map<string, number>;
+  schedule: Map<string, { opponent: string | null; homeAway: 'home' | 'away' | null; kickoffUtc: number | null; kickoffLocal: string | null }>;
+  selectedStarterIds: Set<string>;
+  selectedWeek: number | null;
+  byeWeeksByTeam: Map<string, number | null>;
+}): LineupRosterSnapshot[] {
+  const rows: LineupRosterSnapshot[] = [];
+
+  for (const player of args.rosterPlayers.values()) {
+    const status = args.rosterStatuses.get(player.id) ?? { status: 'UNKNOWN', locked: false };
+    const directoryPlayer = args.playersDirectory.get(player.id) ?? null;
+    const name = resolveRosterPlayerName(player.name, directoryPlayer?.name ?? null, player.id);
+    const team = player.team ?? directoryPlayer?.team ?? null;
+    const position = player.position === 'UNK' ? directoryPlayer?.position ?? 'UNK' : player.position;
+    const game = team ? args.schedule.get(team) ?? null : null;
+    const injury = args.injuries.get(player.id) ?? null;
+    const selected = args.selectedStarterIds.has(player.id) || status.status === 'S';
+    const kickoffUtc = game?.kickoffUtc ?? null;
+    const locked = status.locked || Boolean(kickoffUtc !== null && kickoffUtc * 1000 <= Date.now() && selected);
+    const byeWeek = team ? args.byeWeeksByTeam.get(team) ?? null : null;
+    const isByeWeek = byeWeek !== null && args.selectedWeek !== null && byeWeek === args.selectedWeek;
+    const bye = isByeWeek ? 'Bye' : null;
+    const availability: LineupRosterSnapshot['availability'] = locked ? 'locked' : bye ? 'bye' : injury ? 'injured' : game ? 'available' : 'unknown';
+    const statusText = locked ? 'Locked' : bye ? 'Bye week' : injury ? `Injury ${injury}` : game?.kickoffLocal ? `Kickoff ${game.kickoffLocal}` : 'Availability unavailable';
+
+    rows.push({
+      id: player.id,
+      name,
+      position,
+      team,
+      rosterStatus: status.status,
+      locked,
+      selected,
+      bye,
+      opponent: game?.opponent ?? null,
+      homeAway: game?.homeAway ?? null,
+      kickoffUtc: game?.kickoffUtc ?? null,
+      kickoffLocal: game?.kickoffLocal ?? null,
+      injury,
+      projection: args.projectedScores.get(player.id) ?? null,
+      startPercentage: args.topStarters.get(player.id) ?? null,
+      rosterRank: null,
+      statusText,
+      availability,
+      canToggle: availability === 'available',
+      group: groupPosition(position),
+    });
+  }
+
+  const rankByGroup = new Map<string, number>();
+  for (const row of rows) {
+    const key = row.group;
+    const next = (rankByGroup.get(key) ?? 0) + 1;
+    rankByGroup.set(key, next);
+    row.rosterRank = next;
+  }
+
+  const order = ['QB', 'RB', 'WR', 'TE', 'PK', 'DEF', 'OTHER'];
+  return rows.sort((left, right) => {
+    const leftOrder = order.indexOf(left.group);
+    const rightOrder = order.indexOf(right.group);
+    if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+    if (left.position !== right.position) return left.position.localeCompare(right.position);
+    return left.name.localeCompare(right.name);
+  });
+}
+
+async function loadLineupPayloads(sessionCookieValue: string | null, selectedWeekParam?: string | null) {
+  if (!sessionCookieValue) {
+    return { ok: false as const, message: 'Sign in to MFL to load your lineup.' };
+  }
+
+  const [leagueResponse, scheduleResponse, playersResponse, primaryResolution] = await Promise.all([
+    fetchMflExport('league', { JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
+    fetchMflExport('schedule', { JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
+    fetchMflExport('players', { JSON: '1' }, { revalidate: 60 * 60 * 24 }),
+    resolvePrimaryFranchiseId(sessionCookieValue),
+  ]);
+
+  if (!leagueResponse.ok || !scheduleResponse.ok || !playersResponse.ok) {
+    return { ok: false as const, message: 'Lineup data could not be loaded.' };
+  }
+
+  const [leaguePayload, schedulePayload, playersPayload] = await Promise.all([
+    leagueResponse.json().catch(() => null),
+    scheduleResponse.json().catch(() => null),
+    playersResponse.json().catch(() => null),
+  ]);
+
+  let rules: LineupRules;
+  try {
+    rules = parseLineupRules(leaguePayload);
+  } catch {
+    return { ok: false as const, message: 'Lineup data could not be loaded.' };
+  }
+  const schedule = parseScheduleWeeks(schedulePayload);
+  const franchiseNames = parseLeagueFranchises(leaguePayload);
+  const playersDirectory = parsePlayersDirectory(playersPayload);
+
+  if (!schedule || playersDirectory.size === 0) {
+    return { ok: false as const, message: 'Lineup data could not be loaded.' };
+  }
+
+  const requestedWeek = parseWeekParam(selectedWeekParam);
+  if (requestedWeek === 'invalid') {
+    return { ok: false as const, message: `Invalid week selection. Choose a week from ${schedule.weeks[0]} to ${schedule.weeks[schedule.weeks.length - 1]}.` };
+  }
+
+  const currentWeek = schedule.currentWeek ?? schedule.weeks[0] ?? null;
+  const selectedWeek = requestedWeek ?? chooseDefaultWeek(currentWeek, schedule.weeks);
+  if (selectedWeek === null || !schedule.weeks.includes(selectedWeek)) {
+    return { ok: false as const, message: 'Selected week is not available.' };
+  }
+
+  const franchiseId = primaryResolution?.franchiseId ?? normalizeFranchiseId(process.env.MFL_PRIMARY_FRANCHISE_ID);
+  if (!franchiseId) {
+    return { ok: false as const, message: 'Sign in to MFL to load your lineup.' };
+  }
+
+  const franchiseName = franchiseNames.get(franchiseId) ?? `Franchise ${franchiseId}`;
+
+  const scheduleWeekResponses = await Promise.all(
+    schedule.weeks.map((week) => fetchMflSiteExport('nflSchedule', { W: String(week), JSON: '1' }, { revalidate: 60 * 60 })),
+  );
+
+  const selectedWeekIndex = schedule.weeks.indexOf(selectedWeek);
+  if (selectedWeekIndex < 0 || !scheduleWeekResponses[selectedWeekIndex]?.ok) {
+    return { ok: false as const, message: 'Lineup data could not be loaded.' };
+  }
+
+  const [rosterResponse, rosterStatusResponse, projectedScoresResponse, injuriesResponse, topStartersResponse] = await Promise.all([
+    fetchMflExport('rosters', { FRANCHISE: franchiseId, W: String(selectedWeek), JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
+    fetchMflExport('playerRosterStatus', { FRANCHISE: franchiseId, W: String(selectedWeek), JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
+    fetchMflExport('projectedScores', { JSON: '1', W: String(selectedWeek) }, { sessionCookieValue, cache: 'no-store' }),
+    fetchMflExport('injuries', { JSON: '1', W: String(selectedWeek) }, { sessionCookieValue, cache: 'no-store' }),
+    fetchMflExport('topStarters', { JSON: '1', W: String(selectedWeek) }, { sessionCookieValue, cache: 'no-store' }),
+  ]);
+
+  if (!rosterResponse.ok || !rosterStatusResponse.ok) {
+    return { ok: false as const, message: 'Lineup data could not be loaded.' };
+  }
+
+  const [rosterPayload, rosterStatusPayload, projectedScoresPayload, injuriesPayload, topStartersPayload, schedulePayloads] = await Promise.all([
+    rosterResponse.json().catch(() => null),
+    rosterStatusResponse.json().catch(() => null),
+    projectedScoresResponse.json().catch(() => null),
+    injuriesResponse.json().catch(() => null),
+    topStartersResponse.json().catch(() => null),
+    Promise.all(scheduleWeekResponses.map((response) => response.json().catch(() => null))),
+  ]);
+
+  const rosterPlayers = parseRosterPlayers(rosterPayload);
+  const rosterStatuses = parseRosterStatus(rosterStatusPayload);
+  const projectedScores = parseProjectedScores(projectedScoresPayload);
+  const injuries = parseInjuries(injuriesPayload);
+  const topStarters = parseTopStarters(topStartersPayload);
+  const scheduleByWeek = new Map<number, Set<string>>();
+  let scheduleMap = new Map<string, { opponent: string | null; homeAway: 'home' | 'away' | null; kickoffUtc: number | null; kickoffLocal: string | null }>();
+  let canDeriveByes = true;
+
+  for (let index = 0; index < schedule.weeks.length; index += 1) {
+    const week = schedule.weeks[index];
+    const weekSchedule = parseNflSchedule(schedulePayloads[index]);
+    if (week === selectedWeek) {
+      scheduleMap = weekSchedule;
+    } else if (weekSchedule.size === 0) {
+      canDeriveByes = false;
+    }
+
+    scheduleByWeek.set(week, new Set(weekSchedule.keys()));
+  }
+
+  const byeWeeksByTeam = canDeriveByes ? deriveTeamByeWeeks(scheduleByWeek, schedule.weeks) : new Map<string, number | null>();
+
+  const selectedStarterIds = new Set<string>();
+  for (const [id, rosterStatus] of rosterStatuses.entries()) {
+    if (rosterStatus.status === 'S') selectedStarterIds.add(id);
+  }
+
+  const rows = buildRows({
+    rosterPlayers,
+    playersDirectory,
+    rosterStatuses,
+    schedule: scheduleMap,
+    projectedScores,
+    injuries,
+    topStarters,
+    selectedStarterIds,
+    selectedWeek,
+    byeWeeksByTeam,
+  });
+
+  const summary = summarizeRows(rules, rows);
+
+  return {
+    ok: true as const,
+    message: summary.legal ? `Week ${selectedWeek} ready for submission.` : `Week ${selectedWeek} needs attention.`,
+    franchiseId,
+    franchiseName,
+    currentWeek,
+    selectedWeek,
+    availableWeeks: schedule.weeks,
+    rules,
+    rows,
+    summary,
+    submittedAt: null,
+    rosterPlayerIds: new Set([...rosterPlayers.keys()]),
+    playersById: rows.reduce((map, row) => {
+      map.set(row.id, row);
+      return map;
+    }, new Map<string, LineupRosterSnapshot>()),
+    currentStarterIds: [...selectedStarterIds],
+  } satisfies LineupSubmissionContext;
+}
+
+export async function loadLineupPageState(sessionCookieValue: string | null, selectedWeekParam?: string | null): Promise<LineupPageState> {
+  const payload = await loadLineupPayloads(sessionCookieValue, selectedWeekParam);
+  if (!payload.ok) return buildErrorState(payload.message);
+
+  return {
+    ok: true,
+    message: payload.message,
+    franchiseId: payload.franchiseId,
+    franchiseName: payload.franchiseName,
+    currentWeek: payload.currentWeek,
+    selectedWeek: payload.selectedWeek,
+    availableWeeks: payload.availableWeeks,
+    rules: payload.rules,
+    rows: payload.rows,
+    summary: payload.summary,
+    submittedAt: payload.submittedAt,
+  };
+}
+
+export async function loadLineupSubmissionContext(sessionCookieValue: string | null, selectedWeekParam?: string | null): Promise<LineupSubmissionContext> {
+  const payload = await loadLineupPayloads(sessionCookieValue, selectedWeekParam);
+  if (!payload.ok) {
+    const status: 400 | 401 | 503 = payload.message.toLowerCase().includes('sign in')
+      ? 401
+      : payload.message.toLowerCase().includes('week')
+        ? 400
+        : 503;
+    throw new LineupLoadError(status, payload.message);
+  }
+
+  return payload;
+}
+
+export function validateLineupSubmission(
+  input: {
+    rules: LineupRules;
+    playersById: Map<string, LineupRosterSnapshot>;
+    rosterPlayerIds: Set<string>;
+    starters: string[];
+    clear: boolean;
+    comments?: string;
+  },
+): LineupValidationResult {
+  if ((input.comments ?? '').length > 280) {
+    return { ok: false, status: 400, message: 'Comments must be 280 characters or fewer.' };
+  }
+
+  if (input.clear) {
+    if (input.starters.length > 0) {
+      return { ok: false, status: 400, message: 'Clear submissions must not include starters.' };
+    }
+
+    return { ok: true, normalizedStarters: [] };
+  }
+
+  if (!input.clear && input.starters.length === 0) {
+    return { ok: false, status: 400, message: 'Empty lineup is not allowed. Use clear to submit an intentional empty lineup.' };
+  }
+
+  const seen = new Set<string>();
+  for (const starterId of input.starters) {
+    if (seen.has(starterId)) {
+      return { ok: false, status: 400, message: 'Duplicate starters are not allowed.' };
+    }
+    seen.add(starterId);
+
+    if (!input.rosterPlayerIds.has(starterId)) {
+      return { ok: false, status: 400, message: `Player ${starterId} is not on the active roster.` };
+    }
+
+    const snapshot = input.playersById.get(starterId);
+    if (!snapshot) {
+      return { ok: false, status: 400, message: `Player ${starterId} could not be verified.` };
+    }
+
+    if (snapshot.availability === 'bye') {
+      return { ok: false, status: 400, message: `${snapshot.name} is on bye and cannot be started.` };
+    }
+
+    if (snapshot.locked && snapshot.selected !== true) {
+      return { ok: false, status: 409, message: `${snapshot.name} is locked and cannot be changed.` };
+    }
+  }
+
+  for (const snapshot of input.playersById.values()) {
+    if (!snapshot.locked) continue;
+    const selected = seen.has(snapshot.id);
+    if (selected !== snapshot.selected) {
+      return { ok: false, status: 409, message: `${snapshot.name} is locked and cannot be changed.` };
+    }
+  }
+
+  const selectedRows = input.starters.map((starterId) => input.playersById.get(starterId)).filter((row): row is LineupRosterSnapshot => Boolean(row));
+  const selectedByPosition = new Map<string, number>();
+  for (const row of selectedRows) {
+    const next = (selectedByPosition.get(row.position) ?? 0) + 1;
+    selectedByPosition.set(row.position, next);
+  }
+
+  const flexPositions = new Set(input.rules.flexEligiblePositions);
+  let flexExtras = 0;
+
+  for (const rule of input.rules.positions) {
+    const selected = selectedByPosition.get(rule.position) ?? 0;
+    if (selected < rule.min || selected > rule.max) {
+      return { ok: false, status: 400, message: `Lineup does not satisfy ${rule.position} min/max requirements.` };
+    }
+    if (flexPositions.has(rule.position)) {
+      flexExtras += Math.max(0, selected - rule.min);
+    }
+  }
+
+  if (flexExtras > input.rules.flexSlots) {
+    return { ok: false, status: 400, message: 'Flex requirements are not satisfied.' };
+  }
+
+  const totalSelected = input.starters.length;
+  if (!input.clear && (totalSelected < input.rules.totalMin || totalSelected > input.rules.totalMax)) {
+    return { ok: false, status: 400, message: 'Total starters are outside league limits.' };
+  }
+
+  return { ok: true, normalizedStarters: [...input.starters] };
+}
+
+export async function importLineupSubmission(args: {
+  sessionCookieValue: string;
+  franchiseId: string;
+  week: number;
+  starters: string[];
+  comments?: string;
+  clear?: boolean;
+  playersById: Map<string, LineupRosterSnapshot>;
+  rosterPlayerIds: Set<string>;
+  rules: LineupRules;
+}): Promise<LineupValidationResult & { confirmed?: boolean; submittedAt?: string; actualStarters?: string[] }> {
+  const validation = validateLineupSubmission({
+    rules: args.rules,
+    playersById: args.playersById,
+    rosterPlayerIds: args.rosterPlayerIds,
+    starters: args.starters,
+    clear: Boolean(args.clear),
+    comments: args.comments,
+  });
+
+  if (!validation.ok) return validation;
+
+  const config = getMflConfig();
+  const url = new URL(`https://${config.host}/${config.year}/import`);
+  const body = new URLSearchParams();
+  body.set('TYPE', 'lineup');
+  body.set('L', config.leagueId);
+  body.set('W', String(args.week));
+  body.set('STARTERS', args.clear ? '' : validation.normalizedStarters.join(','));
+  body.set('COMMENTS', args.comments ?? '');
+
+  const response = await fetch(url, {
+    method: 'POST',
+    cache: 'no-store',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+      Cookie: `MFL_USER_ID=${args.sessionCookieValue}`,
+      'User-Agent': config.userAgent,
+      Accept: 'application/xml, text/xml, text/plain, application/json;q=0.8, */*;q=0.2',
+    },
+    body: body.toString(),
+  });
+
+  if (response.status === 401 || response.status === 403) {
+    return { ok: false, status: 401, message: 'Your MFL session has expired. Sign in again.' };
+  }
+
+  if (response.status === 429) {
+    return { ok: false, status: 429, message: 'MFL is rate limiting requests. Please try again later.' };
+  }
+
+  if (!response.ok) {
+    if (response.status >= 500) {
+      return { ok: false, status: 503, message: 'MFL is temporarily unavailable.' };
+    }
+
+    return { ok: false, status: 400, message: 'Lineup submission failed.' };
+  }
+
+  const verifyResponse = await fetchMflExport(
+    'playerRosterStatus',
+    { FRANCHISE: args.franchiseId, W: String(args.week), JSON: '1' },
+    { sessionCookieValue: args.sessionCookieValue, cache: 'no-store' },
+  );
+
+  if (!verifyResponse.ok) {
+    return { ok: false, status: 503, message: 'Submission was accepted but could not be verified.' };
+  }
+
+  const verifyPayload = await verifyResponse.json().catch(() => null);
+  const statuses = parseRosterStatus(verifyPayload);
+  const actualStarters = [...statuses.entries()].filter(([, value]) => value.status === 'S').map(([id]) => id).sort();
+  const intendedStarters = [...validation.normalizedStarters].sort();
+
+  if (actualStarters.length !== intendedStarters.length || actualStarters.some((id, index) => id !== intendedStarters[index])) {
+    return { ok: false, status: 409, message: 'Lineup import succeeded but verification did not match the submitted starters.' };
+  }
+
+  return { ok: true, normalizedStarters: validation.normalizedStarters, confirmed: true, submittedAt: new Date().toISOString(), actualStarters };
+}
