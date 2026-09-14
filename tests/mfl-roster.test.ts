@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   deriveRosterByeWeeks,
   formatRosterSalary,
+  groupRosterRows,
   loadRosterPageState,
   parseRosterPageState,
 } from '../lib/mfl-roster.ts';
@@ -21,6 +22,25 @@ function restoreEnv(baseEnv: NodeJS.ProcessEnv) {
   }
   Object.assign(process.env, baseEnv);
 }
+
+test('groupRosterRows uses lineup order, normalizes positions, and stably sorts names', () => {
+  const groups = groupRosterRows([
+    { id: 'other-1', name: 'No Position', position: null, team: null, ytdPoints: null, byeWeek: null, salary: null, contractYear: null, status: 'Bench' },
+    { id: 'def-1', name: 'Zeta Defender', position: 'DEF', team: null, ytdPoints: null, byeWeek: null, salary: null, contractYear: null, status: 'Bench' },
+    { id: 'qb-2', name: 'alice', position: 'QB', team: null, ytdPoints: null, byeWeek: null, salary: null, contractYear: null, status: 'Bench' },
+    { id: 'qb-1', name: 'Alice', position: 'QB', team: null, ytdPoints: null, byeWeek: null, salary: null, contractYear: null, status: 'Bench' },
+    { id: 'pk-1', name: 'Kicker', position: 'PK', team: null, ytdPoints: null, byeWeek: null, salary: null, contractYear: null, status: 'Bench' },
+    { id: 'def-2', name: 'Alpha Defender', position: 'Def', team: null, ytdPoints: null, byeWeek: null, salary: null, contractYear: null, status: 'Bench' },
+    { id: 'unknown-1', name: 'Unknown Position', position: 'ATH', team: null, ytdPoints: null, byeWeek: null, salary: null, contractYear: null, status: 'Bench' },
+  ]);
+
+  assert.deepEqual(groups.map(({ position, rows }) => [position, rows.map(({ id }) => id)]), [
+    ['QB', ['qb-2', 'qb-1']],
+    ['PK', ['pk-1']],
+    ['Def', ['def-2', 'def-1']],
+    ['Other', ['other-1', 'unknown-1']],
+  ]);
+});
 
 test('parseRosterPageState combines MFL roster, player, YTD score, salary, and schedule data', () => {
   const state = parseRosterPageState({

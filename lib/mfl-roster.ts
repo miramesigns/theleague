@@ -1,6 +1,8 @@
 import { fetchMflExport, fetchMflSiteExport } from './mfl.ts';
 import { resolvePrimaryFranchiseId } from './mfl-scores.ts';
 
+export { groupRosterRows } from './roster-grouping.ts';
+
 type RecordValue = Record<string, unknown>;
 
 export type RosterScheduleInputs = {

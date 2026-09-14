@@ -1,5 +1,6 @@
+import { Fragment } from 'react';
 import { getMflSessionCookieValue } from '@/lib/mfl-session';
-import { formatRosterSalary, loadRosterPageState } from '@/lib/mfl-roster';
+import { formatRosterSalary, groupRosterRows, loadRosterPageState } from '@/lib/mfl-roster';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -10,6 +11,7 @@ function display(value: string | number | null): string {
 
 export default async function RosterPage() {
   const state = await loadRosterPageState(await getMflSessionCookieValue());
+  const groups = groupRosterRows(state.rows);
 
   return (
     <main className="grid roster-view">
@@ -36,7 +38,11 @@ export default async function RosterPage() {
             </tr>
           </thead>
           <tbody>
-            {state.rows.map((player) => (
+            {groups.map((group) => <Fragment key={`${group.position}-table`}>
+              <tr key={`${group.position}-table-header`} className="roster-position-header">
+                <th colSpan={6} scope="colgroup"><span>{group.position}</span><span>{group.rows.length} players</span></th>
+              </tr>
+              {group.rows.map((player) => (
               <tr key={player.id}>
                 <td data-label="Player"><strong>{player.name}</strong><span className="roster-status">{player.status}</span></td>
                 <td data-label="NFL">{display(player.team)} / {display(player.position)}</td>
@@ -45,11 +51,14 @@ export default async function RosterPage() {
                 <td data-label="Salary">{formatRosterSalary(player.salary)}</td>
                 <td data-label="Contract">{display(player.contractYear)}</td>
               </tr>
-            ))}
+              ))}
+            </Fragment>)}
           </tbody>
         </table>
         <div className="roster-compact-list" aria-label="Compact roster list">
-          {state.rows.map((player) => (
+          {groups.map((group) => <div key={`${group.position}-compact`} className="roster-position-group">
+            <div className="roster-position-header"><strong>{group.position}</strong><span>{group.rows.length} players</span></div>
+            {group.rows.map((player) => (
             <div key={player.id} className="roster-compact-row">
               <div className="roster-compact-main">
                 <strong>{player.name}</strong>
@@ -62,7 +71,8 @@ export default async function RosterPage() {
                 <span>Contract {display(player.contractYear)}</span>
               </div>
             </div>
-          ))}
+            ))}
+          </div>)}
         </div>
         </div>
         <footer className="roster-footer">

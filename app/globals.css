@@ -845,6 +845,36 @@ textarea {
   min-width: 165px;
 }
 
+.roster-position-header th,
+.roster-position-header {
+  background: rgba(7, 13, 24, 0.52);
+  color: var(--muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.roster-position-header th,
+.roster-position-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.roster-table .roster-position-header {
+  display: table-row;
+}
+
+.roster-table .roster-position-header th {
+  display: table-cell;
+}
+
+.roster-position-group + .roster-position-group {
+  border-top: 1px solid var(--line);
+}
+
 .roster-status {
   display: block;
   color: var(--muted);
