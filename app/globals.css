@@ -159,6 +159,24 @@ textarea {
   align-items: flex-start;
 }
 
+.scoreboard-banner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.scoreboard-feed-pill {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+}
+
+.scoreboard-week-picker {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  justify-self: start;
+}
+
 .scores-controls {
   display: flex;
   align-items: center;

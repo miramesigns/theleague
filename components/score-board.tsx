@@ -70,20 +70,19 @@ export function ScoreBoard({
 
   return (
     <section className="grid scores-view">
-      <div className="banner scores-banner">
+      <div className="banner scores-banner scoreboard-banner">
         <div>
           <div className="eyebrow">Scores</div>
           <div className="small muted">{message}</div>
         </div>
 
+        <span className="pill scoreboard-feed-pill">{pillLabel}</span>
+
         {currentWeek !== null && selectedWeek !== null && availableWeeks.length > 0 ? (
-          <div className="scores-controls">
+          <div className="scoreboard-week-picker">
             <WeekPicker availableWeeks={availableWeeks} currentWeek={currentWeek} selectedWeek={selectedWeek} />
-            <span className="pill">{pillLabel}</span>
           </div>
-        ) : (
-          <span className="pill">{pillLabel}</span>
-        )}
+        ) : null}
       </div>
 
       {source === 'error' ? (
