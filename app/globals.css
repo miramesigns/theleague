@@ -60,6 +60,10 @@ textarea {
   margin-bottom: 14px;
 }
 
+.site-header {
+  position: relative;
+}
+
 .site-banner {
   display: block;
   overflow: hidden;
@@ -76,9 +80,10 @@ textarea {
 }
 
 .topbar-actions {
-  display: grid;
-  justify-items: end;
-  gap: 8px;
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  z-index: 2;
 }
 
 .section h2,
@@ -1232,8 +1237,33 @@ textarea {
 
 @media (max-width: 600px) {
   .page {
+    padding-top: 0;
     padding-left: 12px;
     padding-right: 12px;
+  }
+
+  .site-header {
+    margin-right: -12px;
+    margin-left: -12px;
+  }
+
+  .site-banner {
+    aspect-ratio: 2.5 / 1;
+    border-top: 0;
+    border-right: 0;
+    border-left: 0;
+    border-radius: 0;
+  }
+
+  .site-banner-image {
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+  }
+
+  .topbar-actions {
+    right: 16px;
+    bottom: 16px;
   }
 
   .score-nums {
@@ -1320,7 +1350,6 @@ textarea {
     justify-items: start;
   }
 
-  .topbar-actions,
   .auth-controls {
     justify-items: end;
   }
