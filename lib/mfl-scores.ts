@@ -1,4 +1,4 @@
-import { fetchMflExport, fetchMflSiteExport, getMflConfig } from './mfl.ts';
+import { fetchMflExport, fetchMflLiveProjections, fetchMflSiteExport, getMflConfig } from './mfl.ts';
 import { addPlayerLiveState, loadNflScheduleGames } from './mfl-live-state.ts';
 
 const LIVE_SCORES_ERROR_MESSAGE = 'Live data could not be loaded. Please sign in on the More tab and try again.';
@@ -10,8 +10,10 @@ export type MatchupPlayer = {
   id: string;
   name: string;
   position: string;
+  nflTeam: string | null;
   status: 'starter' | 'bench' | 'reserve';
   score: number | null;
+  projection: number | null;
   gameSecondsRemaining: number | null;
   liveStateText?: string;
 };
@@ -433,50 +435,326 @@ function clampPercentage(value: number): number {
   return Math.max(1, Math.min(99, value));
 }
 
-export function estimateMatchupWinChance(
-  team: Pick<MatchupTeam, 'score' | 'status' | 'summary'>,
-  opponent: Pick<MatchupTeam, 'score' | 'status' | 'summary'>,
-): MatchupTeamSummary['winChance'] {
-  if (team.score === null || opponent.score === null) {
-    return null;
-  }
+const WIN_PROBABILITY_SIMULATIONS = 400;
 
-  if (isFinalTeamStatus(team.status) && isFinalTeamStatus(opponent.status)) {
-    if (team.score === opponent.score) {
-      return 50;
+type MflStatProjection = Record<string, number>;
+type MflStatProjections = {
+  players: Map<string, MflStatProjection>;
+  teams: Map<string, MflStatProjection>;
+};
+
+const MINIMUM_PLAYER_PROJECTIONS: Record<string, MflStatProjection> = {
+  QB: { '#P': 0.07, '#R': 0.03, '#C': 0.01, IN: 0.05, FL: 0.02, CC: 0.02, PC: 2, RA: 0.2, P2: 0.02, R2: 0.01, APY: 0.5, ARY: 0.1, ACY: 0.1, PA: 3, TGT: 0.05 },
+  TMQB: { '#P': 0.1, '#R': 0.06, '#C': 0.01, IN: 0.05, FL: 0.02, CC: 0.02, PC: 10, RA: 0.5, P2: 0.2, R2: 0.1, APY: 0.5, ARY: 0.1, ACY: 0.1, PA: 15, TGT: 0.05 },
+  RB: { '#P': 0.02, '#R': 0.08, '#C': 0.05, IN: 0.01, FL: 0.02, CC: 0.4, PC: 0.02, RA: 2, R2: 0.02, PA: 0.04, APY: 0.2, ARY: 0.2, ACY: 0.2, TGT: 0.8 },
+  WR: { '#P': 0.02, '#R': 0.02, '#C': 0.09, IN: 0.01, FL: 0.02, CC: 0.8, PC: 0.01, RA: 0.1, C2: 0.02, PA: 0.02, APY: 0.2, ARY: 0.1, ACY: 0.3, TGT: 1 },
+  TE: { '#P': 0.02, '#R': 0.02, '#C': 0.1, IN: 0.01, FL: 0.02, CC: 0.5, PC: 0.01, RA: 0.08, C2: 0.02, PA: 0.02, APY: 0.2, ARY: 0.1, ACY: 0.2, TGT: 0.9 },
+};
+
+const MINIMUM_TEAM_PROJECTION: MflStatProjection = {
+  AS: 4, TK: 6, SK: 0.3, IC: 0.15, FC: 0.1, TPA: 0, OPA: 0, TYA: 0, '#T': 0.01,
+};
+
+const MFL_EVENT_STATS = new Set([
+  '#P', '#R', '#C', 'PC', 'RA', 'CC', 'PA', 'TGT', 'PD', 'IN', 'FL',
+  'P2', 'R2', 'C2', 'IC', 'FC', '#F', 'EP', 'EM',
+]);
+
+function emptyStatProjections(): MflStatProjections {
+  return { players: new Map(), teams: new Map() };
+}
+
+export function parseMflStatProjections(source: string): MflStatProjections {
+  const projections = emptyStatProjections();
+
+  for (const line of source.split(/\r?\n/)) {
+    const [id, position, ...fields] = line.split(',');
+    if (!id || !position) continue;
+
+    const isPlayer = /^\d+$/.test(id);
+    const base = isPlayer ? MINIMUM_PLAYER_PROJECTIONS[position] : position === 'Def' ? MINIMUM_TEAM_PROJECTION : undefined;
+    const stats: MflStatProjection = { ...(base ?? {}) };
+
+    for (const field of fields) {
+      const [stat, rawValue] = field.split('=');
+      const value = Number(rawValue);
+      if (stat && Number.isFinite(value)) stats[stat] = (stats[stat] ?? 0) + value;
     }
 
-    return team.score > opponent.score ? 100 : 0;
+    (isPlayer ? projections.players : projections.teams).set(id, stats);
   }
 
-  const teamPlaying = team.summary.playing ?? null;
-  const teamYetToPlay = team.summary.yetToPlay ?? null;
-  const opponentPlaying = opponent.summary.playing ?? null;
-  const opponentYetToPlay = opponent.summary.yetToPlay ?? null;
+  return projections;
+}
 
-  if (
-    teamPlaying === null ||
-    teamYetToPlay === null ||
-    opponentPlaying === null ||
-    opponentYetToPlay === null
-  ) {
+async function loadMflStatProjections(week: number, sessionCookieValue: string | null): Promise<MflStatProjections> {
+  try {
+    const response = await fetchMflLiveProjections(week, { sessionCookieValue, cache: 'no-store' });
+    return response.ok ? parseMflStatProjections(await response.text()) : emptyStatProjections();
+  } catch {
+    return emptyStatProjections();
+  }
+}
+
+type SeededRandom = {
+  next: () => number;
+  normal: (mean: number, standardDeviation: number) => number;
+};
+
+function createMflStyleRandom(playerId: string, week: number): SeededRandom {
+  const modulusOne = 4_294_967_087;
+  const modulusTwo = 4_294_965_887;
+  const numericId = Number(playerId);
+  let seed = Number.isFinite(numericId)
+    ? numericId
+    : 100_000 + [...playerId].reduce((total, character, index) => total + character.charCodeAt(0) * (index + 1), 0);
+
+  seed *= week;
+  let seedOne = seed % (modulusOne - 1) + 1;
+  let seedTwo = seed % (modulusTwo - 1) + 1;
+  let spareNormal: number | null = null;
+
+  const next = () => {
+    seedOne = (seedOne * 65_539) % modulusOne;
+    seedTwo = (seedTwo * 65_537) % modulusTwo;
+    return ((seedOne + seedTwo) % 0xffffffff) / 0xffffffff;
+  };
+
+  for (let index = 0; index < 5; index += 1) {
+    next();
+  }
+
+  return {
+    next,
+    normal(mean, standardDeviation) {
+      if (spareNormal !== null) {
+        const value = spareNormal;
+        spareNormal = null;
+        return mean + standardDeviation * value;
+      }
+
+      const first = Math.max(next(), Number.EPSILON);
+      const second = next();
+      const radius = Math.sqrt(-2 * Math.log(first));
+      const angle = 2 * Math.PI * second;
+      spareNormal = radius * Math.sin(angle);
+      return mean + standardDeviation * radius * Math.cos(angle);
+    },
+  };
+}
+
+function poisson(random: SeededRandom, mean: number): number {
+  if (mean <= 0) return 0;
+  const target = random.next();
+  let count = -1;
+  let factorial = 1;
+  let cumulativeProbability = 0;
+
+  while (cumulativeProbability < target) {
+    count += 1;
+    if (count > 0) factorial *= count;
+    cumulativeProbability += Math.pow(mean, count) * Math.exp(-mean) / factorial;
+  }
+
+  return count;
+}
+
+function simulateFromStatProjection(
+  player: MatchupPlayer,
+  projection: MflStatProjection,
+  secondsRemaining: number,
+  week: number,
+): number[] {
+  const fraction = secondsRemaining / 3600;
+  const random = createMflStyleRandom(player.id, week);
+
+  return Array.from({ length: WIN_PROBABILITY_SIMULATIONS }, () => {
+    const simulated: MflStatProjection = {};
+    for (const [stat, projectedValue] of Object.entries(projection)) {
+      const blendedMean = projectedValue * fraction;
+      simulated[stat] = MFL_EVENT_STATS.has(stat)
+        ? poisson(random, Math.max(0, blendedMean * fraction))
+        : Math.max(0, random.normal(blendedMean, Math.abs(projectedValue) / 2.5) * fraction);
+    }
+
+    const completions = simulated.PC ?? 0;
+    const rushes = simulated.RA ?? 0;
+    const receptions = simulated.CC ?? 0;
+    simulated.PY = completions > 0 ? Math.max(0, random.normal(projection.APY ?? 0, 2) * completions) : 0;
+    simulated.RY = rushes > 0 ? Math.max(0, random.normal(projection.ARY ?? 0, 1) * rushes) : 0;
+    simulated.CY = receptions > 0 ? Math.max(0, random.normal(projection.ACY ?? 0, 2) * receptions) : 0;
+
+    if (player.position.toLowerCase() === 'def') {
+      return (simulated.IC ?? 0) * 2 +
+        (simulated.FC ?? 0) * 2 +
+        (simulated.SK ?? 0) +
+        12.5 - (simulated.OPA ?? 0) * 0.5;
+    }
+
+    let points =
+      (simulated['#P'] ?? 0) * 6 +
+      (simulated['#R'] ?? 0) * 6 +
+      (simulated['#C'] ?? 0) * 6 +
+      (simulated.P2 ?? 0) * 2 +
+      (simulated.R2 ?? 0) * 2 +
+      (simulated.C2 ?? 0) * 2 +
+      (simulated.EP ?? 0) -
+      (simulated.EM ?? 0) -
+      (simulated.IN ?? 0) * 2 +
+      simulated.PY * 0.1 +
+      simulated.RY * 0.1 +
+      simulated.CY * 0.1 +
+      receptions;
+
+    const fieldGoals = Math.round(simulated['#F'] ?? 0);
+    for (let fieldGoal = 0; fieldGoal < fieldGoals; fieldGoal += 1) {
+      const distance = random.normal(41, 6);
+      points += distance >= 60 ? 6 : distance >= 50 ? 5 : distance >= 40 ? 4 : 3;
+    }
+
+    return points;
+  });
+}
+
+function simulatePlayerRemainingPoints(
+  player: MatchupPlayer,
+  week: number,
+  statProjections: MflStatProjections,
+): number[] | null {
+  if (player.status !== 'starter' || player.gameSecondsRemaining === 0) {
+    return Array(WIN_PROBABILITY_SIMULATIONS).fill(0);
+  }
+
+  if (player.gameSecondsRemaining === null) {
     return null;
   }
 
-  const teamRemaining = teamPlaying * 0.5 + teamYetToPlay;
-  const opponentRemaining = opponentPlaying * 0.5 + opponentYetToPlay;
-  const remainingPool = teamRemaining + opponentRemaining;
-  const scoreEdge = (team.score - opponent.score) * 1.8;
-  const remainingEdge = (teamRemaining - opponentRemaining) * 2.5;
-  const pressure = 1 / (1 + remainingPool / 6);
-  const swing = Math.max(-35, Math.min(35, scoreEdge + remainingEdge));
+  let secondsRemaining = Math.max(0, Math.min(3600, player.gameSecondsRemaining));
+  if (secondsRemaining < 360) {
+    // MFL lengthens the final six minutes slightly because late-game plays are
+    // less evenly distributed. Possession is unavailable in the export, so use
+    // the same neutral 0.5 factor MFL uses when possession is unknown.
+    secondsRemaining += 0.5 * secondsRemaining * (360 - secondsRemaining) / 360;
+  }
 
-  return clampPercentage(Math.round(50 + swing * pressure));
+  const statProjection = player.position.toLowerCase() === 'def'
+    ? player.nflTeam ? statProjections.teams.get(player.nflTeam) : undefined
+    : statProjections.players.get(player.id);
+  if (statProjection && secondsRemaining === 3600) {
+    return simulateFromStatProjection(player, statProjection, secondsRemaining, week);
+  }
+
+  if (player.projection === null) {
+    return null;
+  }
+
+  const remainingFraction = secondsRemaining / 3600;
+  const actualPoints = player.score ?? 0;
+  const blendedFullGameMean = player.projection * remainingFraction + actualPoints * (1 - remainingFraction);
+  const remainingMean = blendedFullGameMean * remainingFraction;
+  const remainingDeviation = Math.abs(player.projection) / 2.5 * remainingFraction;
+  const random = createMflStyleRandom(player.id, week);
+
+  const scoringComponents = 8;
+  return Array.from({ length: WIN_PROBABILITY_SIMULATIONS }, () => {
+    let remainingPoints = 0;
+    for (let component = 0; component < scoringComponents; component += 1) {
+      remainingPoints += random.normal(
+        remainingMean / scoringComponents,
+        remainingDeviation / Math.sqrt(scoringComponents),
+      );
+    }
+    return Math.max(0, remainingPoints);
+  });
+}
+
+function simulateTeamFinalScores(team: MatchupTeam, week: number, statProjections: MflStatProjections): number[] | null {
+  if (team.score === null) {
+    return null;
+  }
+
+  const starters = team.players.filter((entry) => entry.status === 'starter');
+  const remainingStarterCount = (team.summary.playing ?? 0) + (team.summary.yetToPlay ?? 0);
+  if (remainingStarterCount > 0 && starters.length === 0) {
+    return null;
+  }
+
+  const totals = Array(WIN_PROBABILITY_SIMULATIONS).fill(team.score) as number[];
+  for (const player of starters) {
+    const remainingPoints = simulatePlayerRemainingPoints(player, week, statProjections);
+    if (!remainingPoints) {
+      return null;
+    }
+
+    for (let index = 0; index < WIN_PROBABILITY_SIMULATIONS; index += 1) {
+      totals[index] += remainingPoints[index];
+    }
+  }
+
+  return totals;
+}
+
+export function estimateMflStyleWinChances(
+  home: MatchupTeam,
+  away: MatchupTeam,
+  week: number,
+  statProjections: MflStatProjections = emptyStatProjections(),
+): { home: MatchupTeamSummary['winChance']; away: MatchupTeamSummary['winChance'] } {
+  if (home.score === null || away.score === null) {
+    return { home: null, away: null };
+  }
+
+  if (isFinalTeamStatus(home.status) && isFinalTeamStatus(away.status)) {
+    if (home.score === away.score) {
+      return { home: 50, away: 50 };
+    }
+
+    return home.score > away.score ? { home: 100, away: 0 } : { home: 0, away: 100 };
+  }
+
+  const homeScores = simulateTeamFinalScores(home, week, statProjections);
+  const awayScores = simulateTeamFinalScores(away, week, statProjections);
+  if (!homeScores || !awayScores) {
+    return { home: null, away: null };
+  }
+
+  let awayWins = 0;
+  let homeWins = 0;
+  for (let index = 0; index < WIN_PROBABILITY_SIMULATIONS; index += 1) {
+    if (awayScores[index] > homeScores[index]) awayWins += 1;
+    if (homeScores[index] > awayScores[index]) homeWins += 1;
+  }
+
+  const decidedSimulations = awayWins + homeWins;
+  if (decidedSimulations === 0) {
+    return { home: 50, away: 50 };
+  }
+
+  const awayChance = clampPercentage(Math.round(100 * awayWins / decidedSimulations));
+  return { home: 100 - awayChance, away: awayChance };
+}
+
+function parseProjectedScores(payload: unknown): Map<string, number> {
+  const root = toRecord(payload);
+  const projectedScores = toRecord(root?.projectedScores);
+  const entries = toJsonArray(
+    projectedScores?.playerScore ?? projectedScores?.player ?? projectedScores?.players ?? root?.playerScore ?? root?.player,
+  );
+  const projections = new Map<string, number>();
+
+  for (const entry of entries) {
+    const id = extractText(entry.id);
+    const projection = safeNumber(entry.score ?? entry.points ?? entry.projection);
+    if (id && projection !== null) projections.set(id, projection);
+  }
+
+  return projections;
 }
 
 function parseMatchupPlayers(
   franchise: Record<string, unknown>,
   playersById: Map<string, NamedPlayer>,
+  projectionsById: Map<string, number>,
   source: ScoresSource,
 ): MatchupPlayer[] {
   const playersRoot = toRecord(franchise.players);
@@ -499,8 +777,10 @@ function parseMatchupPlayers(
         id,
         name,
         position,
+        nflTeam: playerInfo?.team ?? null,
         status: parsePlayerGroup(entry.status),
         score,
+        projection: projectionsById.get(id) ?? null,
         gameSecondsRemaining,
       } satisfies MatchupPlayer;
     })
@@ -511,6 +791,7 @@ function parseMatchupTeam(
   franchise: Record<string, unknown>,
   namesById: Map<string, string>,
   playersById: Map<string, NamedPlayer>,
+  projectionsById: Map<string, number>,
   source: ScoresSource,
 ): MatchupTeam | null {
   const teamId = extractText(franchise.id);
@@ -522,7 +803,7 @@ function parseMatchupTeam(
   const isHome = safeBoolean(franchise.isHome) ?? false;
   const score = source === 'schedule' ? null : safeNumber(franchise.score);
   const result = source === 'schedule' ? null : extractText(franchise.result) || null;
-  const players = parseMatchupPlayers(franchise, playersById, source);
+  const players = parseMatchupPlayers(franchise, playersById, projectionsById, source);
   const summary = deriveStarterPhaseSummary(franchise, players, source);
 
   if ((source === 'live' || source === 'results') && score === null) {
@@ -552,7 +833,10 @@ function parseMatchupCards(
   weekRecord: Record<string, unknown> | null | undefined,
   namesById: Map<string, string>,
   playersById: Map<string, NamedPlayer>,
+  projectionsById: Map<string, number>,
   source: ScoresSource,
+  simulationWeek: number,
+  statProjections: MflStatProjections = emptyStatProjections(),
 ): MatchupCard[] | null {
   if (!weekRecord) {
     return null;
@@ -576,16 +860,17 @@ function parseMatchupCards(
     const orderedFranchises = homeIndex === 1 ? [franchises[1], franchises[0]] : franchises;
 
     const [homeFranchise, awayFranchise] = orderedFranchises;
-    const home = parseMatchupTeam(homeFranchise, namesById, playersById, source);
-    const away = parseMatchupTeam(awayFranchise, namesById, playersById, source);
+    const home = parseMatchupTeam(homeFranchise, namesById, playersById, projectionsById, source);
+    const away = parseMatchupTeam(awayFranchise, namesById, playersById, projectionsById, source);
 
     if (!home || !away) {
       return null;
     }
 
-    home.summary.winChance = estimateMatchupWinChance(home, away);
+    const chances = estimateMflStyleWinChances(home, away, simulationWeek, statProjections);
+    home.summary.winChance = chances.home;
     home.summary.winChanceMode = home.status === 'Final' && away.status === 'Final' ? 'exact' : home.summary.winChance === null ? 'unavailable' : 'estimated';
-    away.summary.winChance = estimateMatchupWinChance(away, home);
+    away.summary.winChance = chances.away;
     away.summary.winChanceMode = home.status === 'Final' && away.status === 'Final' ? 'exact' : away.summary.winChance === null ? 'unavailable' : 'estimated';
 
     if (seenTeamIds.has(home.teamId) || seenTeamIds.has(away.teamId)) {
@@ -753,9 +1038,12 @@ function parseSelectedMatchup(
   franchiseId: string,
   namesById: Map<string, string>,
   playersById: Map<string, NamedPlayer>,
+  projectionsById: Map<string, number>,
   source: ScoresSource,
+  simulationWeek: number,
+  statProjections: MflStatProjections = emptyStatProjections(),
 ): MatchupCard | null {
-  const matchups = parseMatchupCards(weekRecord, namesById, playersById, source);
+  const matchups = parseMatchupCards(weekRecord, namesById, playersById, projectionsById, source, simulationWeek, statProjections);
   if (!matchups) {
     return null;
   }
@@ -768,10 +1056,12 @@ export async function loadScoresPageState(
   requestedWeekParam?: string | null,
 ): Promise<ScoresPageState> {
   try {
-    const [liveScoringResponse, leagueResponse, scheduleResponse, primaryResolution] = await Promise.all([
+    const [liveScoringResponse, leagueResponse, scheduleResponse, playersResponse, projectedScoresResponse, primaryResolution] = await Promise.all([
       fetchMflExport('liveScoring', { JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
       fetchMflExport('league', { JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
       fetchMflExport('schedule', { JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
+      fetchMflExport('players', { JSON: '1' }, { sessionCookieValue, revalidate: 60 * 60 * 24 }),
+      fetchMflExport('projectedScores', { JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
       resolvePrimaryFranchiseId(sessionCookieValue),
     ]);
 
@@ -779,14 +1069,17 @@ export async function loadScoresPageState(
       return buildErrorState();
     }
 
-    const [livePayload, leaguePayload, schedulePayload] = await Promise.all([
+    const [livePayload, leaguePayload, schedulePayload, playersPayload, projectedScoresPayload] = await Promise.all([
       liveScoringResponse.json(),
       leagueResponse.json(),
       scheduleResponse.json(),
+      playersResponse.ok ? playersResponse.json().catch(() => null) : Promise.resolve(null),
+      projectedScoresResponse.ok ? projectedScoresResponse.json().catch(() => null) : Promise.resolve(null),
     ]);
 
     const namesById = parseLeagueNames(leaguePayload);
-    const playersById = new Map<string, NamedPlayer>();
+    const playersById = parsePlayersExport(playersPayload) ?? new Map<string, NamedPlayer>();
+    const projectionsById = parseProjectedScores(projectedScoresPayload);
     const schedule = parseScheduleWeeks(schedulePayload);
     const liveScoringRecord = toRecord(toRecord(livePayload)?.liveScoring);
     const currentWeek = safeWeek(liveScoringRecord?.week);
@@ -819,7 +1112,8 @@ export async function loadScoresPageState(
 
     if (selectedWeek === currentWeek) {
       const liveScoring = toRecord(toRecord(livePayload)?.liveScoring);
-      const liveMatchups = parseMatchupCards(liveScoring, namesById, playersById, 'live');
+      const statProjections = await loadMflStatProjections(selectedWeek, sessionCookieValue);
+      const liveMatchups = parseMatchupCards(liveScoring, namesById, playersById, projectionsById, 'live', selectedWeek, statProjections);
 
       if (liveMatchups) {
         return buildSuccessState({
@@ -836,7 +1130,7 @@ export async function loadScoresPageState(
       if (resultsResponse.ok) {
         const resultsPayload = await resultsResponse.json();
         const resultsRecord = toRecord(toRecord(resultsPayload)?.weeklyResults);
-        const resultsMatchups = parseMatchupCards(resultsRecord, namesById, playersById, 'results');
+        const resultsMatchups = parseMatchupCards(resultsRecord, namesById, playersById, projectionsById, 'results', selectedWeek);
 
         if (resultsMatchups) {
           return buildSuccessState({
@@ -858,7 +1152,7 @@ export async function loadScoresPageState(
       if (resultsResponse.ok) {
         const resultsPayload = await resultsResponse.json();
         const resultsRecord = toRecord(toRecord(resultsPayload)?.weeklyResults);
-        const resultsMatchups = parseMatchupCards(resultsRecord, namesById, playersById, 'results');
+        const resultsMatchups = parseMatchupCards(resultsRecord, namesById, playersById, projectionsById, 'results', selectedWeek);
 
         if (resultsMatchups) {
           return buildSuccessState({
@@ -872,7 +1166,7 @@ export async function loadScoresPageState(
         }
       }
 
-      const scheduleMatchups = parseMatchupCards(schedule.weekMap.get(selectedWeek), namesById, playersById, 'schedule');
+      const scheduleMatchups = parseMatchupCards(schedule.weekMap.get(selectedWeek), namesById, playersById, projectionsById, 'schedule', selectedWeek);
       if (scheduleMatchups) {
         return buildSuccessState({
           source: 'schedule',
@@ -887,7 +1181,7 @@ export async function loadScoresPageState(
       return buildErrorState();
     }
 
-    const scheduleMatchups = parseMatchupCards(schedule.weekMap.get(selectedWeek), namesById, playersById, 'schedule');
+    const scheduleMatchups = parseMatchupCards(schedule.weekMap.get(selectedWeek), namesById, playersById, projectionsById, 'schedule', selectedWeek);
     if (!scheduleMatchups) {
       return buildErrorState();
     }
@@ -922,11 +1216,13 @@ export async function loadMatchupDetailState(
   }
 
   try {
-    const [currentLiveResponse, selectedLiveResponse, leagueResponse, playersResponse, primaryResolution] = await Promise.all([
+    const [currentLiveResponse, selectedLiveResponse, leagueResponse, playersResponse, projectedScoresResponse, statProjections, primaryResolution] = await Promise.all([
       fetchMflExport('liveScoring', { JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
       fetchMflExport('liveScoring', { W: String(selectedWeek), JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
       fetchMflExport('league', { JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
       fetchMflExport('players', { JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
+      fetchMflExport('projectedScores', { W: String(selectedWeek), JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
+      loadMflStatProjections(selectedWeek, sessionCookieValue),
       resolvePrimaryFranchiseId(sessionCookieValue),
     ]);
 
@@ -934,11 +1230,12 @@ export async function loadMatchupDetailState(
       return buildDetailErrorState();
     }
 
-    const [currentLivePayload, selectedLivePayload, leaguePayload, playersPayload] = await Promise.all([
+    const [currentLivePayload, selectedLivePayload, leaguePayload, playersPayload, projectedScoresPayload] = await Promise.all([
       currentLiveResponse.json(),
       selectedLiveResponse.json(),
       leagueResponse.json(),
       playersResponse.json(),
+      projectedScoresResponse.ok ? projectedScoresResponse.json().catch(() => null) : Promise.resolve(null),
     ]);
 
     const currentLiveRecord = toRecord(toRecord(currentLivePayload)?.liveScoring);
@@ -946,13 +1243,14 @@ export async function loadMatchupDetailState(
     const selectedLiveRecord = toRecord(toRecord(selectedLivePayload)?.liveScoring);
     const namesById = parseLeagueNames(leaguePayload);
     const playersById = parsePlayersExport(playersPayload);
+    const projectionsById = parseProjectedScores(projectedScoresPayload);
 
     if (!namesById || !playersById || currentWeek === null) {
       return buildDetailErrorState();
     }
 
     const source = sourceFromWeekComparison(selectedWeek, currentWeek);
-    const matchup = parseSelectedMatchup(selectedLiveRecord, franchiseId, namesById, playersById, source);
+    const matchup = parseSelectedMatchup(selectedLiveRecord, franchiseId, namesById, playersById, projectionsById, source, selectedWeek, statProjections);
 
     if (!matchup) {
       return buildDetailErrorState(`No matchup was found for week ${selectedWeek}.`);

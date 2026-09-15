@@ -2,7 +2,15 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { fetchMflExport } from '../lib/mfl.ts';
-import { LIVE_SCORES_ERROR_MESSAGE, loadMatchupDetailState, loadScoreboardState, resolvePrimaryFranchiseId } from '../lib/mfl-scores.ts';
+import {
+  estimateMflStyleWinChances,
+  LIVE_SCORES_ERROR_MESSAGE,
+  loadMatchupDetailState,
+  loadScoreboardState,
+  parseMflStatProjections,
+  resolvePrimaryFranchiseId,
+  type MatchupTeam,
+} from '../lib/mfl-scores.ts';
 
 const baseEnv = {
   ...process.env,
@@ -126,6 +134,20 @@ function makePlayersPayload() {
         { id: 'p1002', name: 'Running Back One', position: 'RB', team: 'PHI' },
         { id: 'p1003', name: 'Wide Receiver One', position: 'WR', team: 'NYJ' },
         { id: 'p1004', name: 'Bench Tight End', position: 'TE', team: 'DAL' },
+      ],
+    },
+  };
+}
+
+function makeProjectedScoresPayload() {
+  return {
+    projectedScores: {
+      week: '8',
+      playerScore: [
+        { id: 'p1001', score: '24.0' },
+        { id: 'p1002', score: '18.0' },
+        { id: 'p1003', score: '14.0' },
+        { id: 'p1004', score: '8.0' },
       ],
     },
   };
@@ -319,6 +341,54 @@ test('fetchMflExport forwards the configured user agent, no-store cache, and MFL
   }
 });
 
+test('MFL-style simulation makes the projected favorite the favorite despite a current deficit', () => {
+  const statProjections = parseMflStatProjections([
+    '13116,QB,PC=21.72,RA=3.61,#P=2.23,#R=0.26,APY=10.5967,ARY=6.0000,IN=0.65,FL=0.06,P2=0.16,PA=34.05,TGT=0.05',
+    '11244,TE,RA=0.04,CC=5,#C=0.27,ARY=1.0000,ACY=9.7820,FL=0.03,TGT=7.34',
+    '13630,WR,CC=4.15,#C=0.4,ACY=13.3253,FL=0.03,TGT=7.28',
+  ].join('\n'));
+  const team = (teamId: string, score: number, isHome: boolean, players: Array<[string, string]>): MatchupTeam => ({
+    teamId,
+    teamName: teamId,
+    isHome,
+    score,
+    result: null,
+    status: 'Live',
+    players: players.map(([id, position]) => ({
+      id,
+      name: id,
+      position,
+      nflTeam: null,
+      status: 'starter',
+      score: 0,
+      projection: null,
+      gameSecondsRemaining: 3600,
+    })),
+    summary: {
+      starterTotal: 10,
+      played: 10 - players.length,
+      playing: 0,
+      yetToPlay: players.length,
+      winChance: null,
+      winChanceMode: 'unavailable',
+    },
+  });
+
+  const chances = estimateMflStyleWinChances(
+    team('The Ashy Elbows', 57.4, true, [['13116', 'QB'], ['11244', 'TE']]),
+    team('Outlaw Joker', 90, false, [['13630', 'WR']]),
+    1,
+    statProjections,
+  );
+
+  assert.notEqual(chances.home, null);
+  assert.notEqual(chances.away, null);
+  if (chances.home === null || chances.away === null) throw new Error('Expected simulated probabilities.');
+  assert.equal(chances.home + chances.away, 100);
+  assert.ok(chances.home >= 68 && chances.home <= 75);
+  assert.ok(chances.away >= 25 && chances.away <= 32);
+});
+
 test('loadScoreboardState defaults to the current live week and uses live scoring', async () => {
   const originalFetch = globalThis.fetch;
   const requests: Array<{ type: string; week?: string | null }> = [];
@@ -361,8 +431,8 @@ test('loadScoreboardState defaults to the current live week and uses live scorin
     assert.equal(result.matchups[0].home.summary.played, 1);
     assert.equal(result.matchups[0].home.summary.playing, 1);
     assert.equal(result.matchups[0].home.summary.yetToPlay, 1);
-    assert.equal(result.matchups[0].home.summary.winChance, 54);
-    assert.equal(result.matchups[0].away.summary.winChance, 46);
+    assert.equal(result.matchups[0].home.summary.winChance, null);
+    assert.equal(result.matchups[0].away.summary.winChance, null);
   } finally {
     globalThis.fetch = originalFetch;
     restoreEnv();
@@ -608,6 +678,10 @@ test('loadMatchupDetailState maps live player ids to names and hides fake scores
       return createJsonResponse(playersPayload);
     }
 
+    if (type === 'projectedScores') {
+      return createJsonResponse(makeProjectedScoresPayload());
+    }
+
     if (type === 'myleagues') {
       return createJsonResponse(makeMyLeaguesPayload());
     }
@@ -633,8 +707,8 @@ test('loadMatchupDetailState maps live player ids to names and hides fake scores
     assert.equal(liveResult.matchup?.away.summary.played, 1);
     assert.equal(liveResult.matchup?.away.summary.playing, 1);
     assert.equal(liveResult.matchup?.away.summary.yetToPlay, 1);
-    assert.equal(liveResult.matchup?.home.summary.winChance, 53);
-    assert.equal(liveResult.matchup?.away.summary.winChance, 47);
+    assert.equal(liveResult.matchup?.home.summary.winChance, 95);
+    assert.equal(liveResult.matchup?.away.summary.winChance, 5);
     assert.equal(liveResult.matchup?.home.players[0].liveStateText, 'Playing · Q3 08:42 left');
     assert.equal(liveResult.matchup?.away.players[0].liveStateText, 'Playing · Q3 08:42 left');
     assert.equal(liveResult.matchup?.away.players[1].liveStateText, 'Yet to play');

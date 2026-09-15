@@ -42,6 +42,12 @@ export function buildMflSiteExportUrl(type: string, params: Record<string, strin
   return url;
 }
 
+export function buildMflLiveProjectionUrl(week: number): URL {
+  const config = getMflConfig();
+  const paddedWeek = String(week).padStart(2, '0');
+  return new URL(`https://${config.host}/fflnetdynamic${config.year}/live_proj_${paddedWeek}.txt`);
+}
+
 export type FetchMflExportOptions = {
   sessionCookieValue?: string | null;
   cache?: RequestCache;
@@ -108,4 +114,21 @@ export async function fetchMflSiteExport(
   }
 
   return fetch(url, init);
+}
+
+export async function fetchMflLiveProjections(week: number, options: FetchMflExportOptions = {}) {
+  const config = getMflConfig();
+  const headers = new Headers({
+    'User-Agent': config.userAgent,
+    Accept: 'text/plain, */*;q=0.5',
+  });
+
+  if (options.sessionCookieValue?.trim()) {
+    headers.set('Cookie', `${MFL_SESSION_COOKIE_NAME}=${options.sessionCookieValue.trim()}`);
+  }
+
+  return fetch(buildMflLiveProjectionUrl(week), {
+    headers,
+    cache: options.cache ?? 'no-store',
+  });
 }
