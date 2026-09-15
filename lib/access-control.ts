@@ -8,6 +8,7 @@ const PUBLIC_ASSET_PATHS = new Set([
   '/the-league-2026-banner.jpg',
   '/the-league-2026-championship-belt.png',
   '/the-league-2026-hero.png',
+  '/the-league-2026-hero-clean.png',
 ]);
 
 export function isPublicCompanionPath(pathname: string): boolean {

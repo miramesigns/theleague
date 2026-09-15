@@ -38,7 +38,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             <header className="topbar site-header">
               <Link href="/scores" className="site-banner" aria-label="MFL League Companion home">
                 <Image
-                  src="/the-league-2026-hero.png"
+                  src="/the-league-2026-hero-clean.png"
                   alt="The League 2026 — Week 1 live fantasy football companion"
                   className="site-banner-image"
                   width={1953}

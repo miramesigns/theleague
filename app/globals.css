@@ -76,8 +76,8 @@ textarea {
 
 .topbar-actions {
   position: absolute;
-  top: 62%;
-  left: 82.75%;
+  top: 83%;
+  left: 88%;
   z-index: 2;
   transform: translate(-50%, -50%);
 }
@@ -1241,6 +1241,11 @@ textarea {
   .site-header {
     margin-right: -12px;
     margin-left: -12px;
+  }
+
+  .topbar-actions {
+    top: 62%;
+    left: 82.75%;
   }
 
   .score-nums {
