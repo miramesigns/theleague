@@ -41,8 +41,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   src="/the-league-2026-hero.png"
                   alt="The League 2026 — Week 1 live fantasy football companion"
                   className="site-banner-image"
-                  width={1916}
-                  height={821}
+                  width={1953}
+                  height={805}
                   sizes="(max-width: 600px) 100vw, 848px"
                   preload
                 />
