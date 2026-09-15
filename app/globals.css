@@ -66,11 +66,6 @@ textarea {
 
 .site-banner {
   display: block;
-  overflow: hidden;
-  border: 1px solid rgba(125, 211, 252, 0.24);
-  border-radius: var(--radius);
-  background: #071527;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
 }
 
 .site-banner-image {
@@ -81,9 +76,10 @@ textarea {
 
 .topbar-actions {
   position: absolute;
-  right: 18px;
-  bottom: 18px;
+  top: 62%;
+  left: 82.75%;
   z-index: 2;
+  transform: translate(-50%, -50%);
 }
 
 .section h2,
@@ -1245,25 +1241,6 @@ textarea {
   .site-header {
     margin-right: -12px;
     margin-left: -12px;
-  }
-
-  .site-banner {
-    aspect-ratio: 2.5 / 1;
-    border-top: 0;
-    border-right: 0;
-    border-left: 0;
-    border-radius: 0;
-  }
-
-  .site-banner-image {
-    height: 100%;
-    object-fit: cover;
-    object-position: center;
-  }
-
-  .topbar-actions {
-    right: 16px;
-    bottom: 16px;
   }
 
   .score-nums {
