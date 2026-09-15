@@ -55,11 +55,24 @@ textarea {
 }
 
 .topbar {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
+  display: grid;
+  gap: 8px;
   margin-bottom: 14px;
+}
+
+.site-banner {
+  display: block;
+  overflow: hidden;
+  border: 1px solid rgba(125, 211, 252, 0.24);
+  border-radius: var(--radius);
+  background: #071527;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+}
+
+.site-banner-image {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 .topbar-actions {
@@ -68,45 +81,15 @@ textarea {
   gap: 8px;
 }
 
-.brand {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.brand h1,
-.brand p,
 .section h2,
 .section p {
   margin: 0;
 }
 
-.brand h1 {
-  font-size: 1rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.brand p,
 .eyebrow,
 .meta,
 .muted {
   color: var(--muted);
-}
-
-.league-identity {
-  padding: 5px 10px 5px 6px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.league-belt {
-  width: 36px;
-  height: 26px;
-  object-fit: cover;
-  object-position: center;
-  border-radius: 999px;
-  border: 1px solid rgba(253, 230, 138, 0.42);
 }
 
 .pill {
@@ -1334,10 +1317,6 @@ textarea {
 
   .lineup-option-side {
     justify-items: start;
-  }
-
-  .topbar {
-    align-items: flex-start;
   }
 
   .topbar-actions,

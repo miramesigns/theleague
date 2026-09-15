@@ -30,23 +30,18 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       <body>
         <div className="app-shell">
           <div className="page">
-            <header className="topbar">
-              <Link href="/scores" className="brand" aria-label="MFL League Companion home">
-                <h1>MFL League Companion</h1>
-                <p>Live board, lineup edits, and league ops.</p>
+            <header className="topbar site-header">
+              <Link href="/scores" className="site-banner" aria-label="MFL League Companion home">
+                <Image
+                  src="/the-league-2026-banner.jpg"
+                  alt="The League 2026 — Week 1 live fantasy football companion"
+                  className="site-banner-image"
+                  width={1280}
+                  height={431}
+                  priority
+                />
               </Link>
               <div className="topbar-actions">
-                <span className="pill league-identity">
-                  <Image
-                    src="/the-league-2026-championship-belt.png"
-                    alt="Championship belt"
-                    className="league-belt"
-                    width={940}
-                    height={666}
-                    priority
-                  />
-                  <span>The League 2026</span>
-                </span>
                 <Suspense fallback={<button type="button" className="button auth-button" disabled>Sign in</button>}>
                   <AuthControls authenticated={authenticated} />
                 </Suspense>
