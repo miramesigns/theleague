@@ -13,6 +13,11 @@ export const metadata: Metadata = {
   description: 'Phone-first fantasy football companion for MFL leagues.',
   manifest: '/manifest.webmanifest',
   applicationName: 'MFL League Companion',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'The League 2026',
+  },
 };
 
 export const viewport: Viewport = {
