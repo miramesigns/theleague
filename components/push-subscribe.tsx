@@ -125,7 +125,9 @@ export function PushSubscribe() {
       <div className="row">
         <div>
           <div className="eyebrow">Push notifications</div>
-          <div className="small muted">Phone buzzes for MFL activity you opt into.</div>
+          <div className="small muted">
+            Pushes mirror MFL email-style events (trade proposals/results, waivers, IR/taxi, lineup locks, and optional scores) when you are subscribed.
+          </div>
         </div>
         {subscribed ? (
           <button type="button" className="button ghost" onClick={unsubscribe} disabled={busy}>
@@ -167,7 +169,7 @@ export function PushSubscribe() {
       {error ? <p className="small" style={{ color: 'var(--danger)' }}>{error}</p> : null}
 
       <p className="small muted">
-        iPhone: add this site to your Home Screen for reliable Web Push on iOS.
+        iPhone: add this site to your Home Screen for reliable Web Push on iOS. Desktop browsers work after Enable push.
       </p>
     </div>
   );

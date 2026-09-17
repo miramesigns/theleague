@@ -5,14 +5,30 @@ const PUBLIC_ASSET_PATHS = new Set([
   '/favicon.ico',
   '/icon.png',
   '/manifest.webmanifest',
+  '/sw.js',
   '/the-league-2026-banner.jpg',
   '/the-league-2026-championship-belt.png',
   '/the-league-2026-hero.png',
   '/the-league-2026-hero-clean.png',
 ]);
 
+const CRON_PUSH_PATHS = new Set(['/api/push/poll', '/api/push/send']);
+
 export function isPublicCompanionPath(pathname: string): boolean {
   return pathname === '/' || pathname.startsWith(AUTH_ROUTE_PREFIX) || PUBLIC_ASSET_PATHS.has(pathname);
+}
+
+export function isCronPushPath(pathname: string): boolean {
+  return CRON_PUSH_PATHS.has(pathname);
+}
+
+export function hasValidCronAuthorization(
+  authorizationHeader: string | null | undefined,
+  cronSecret: string | null | undefined = process.env.CRON_SECRET,
+): boolean {
+  const secret = cronSecret?.trim();
+  if (!secret || !authorizationHeader) return false;
+  return authorizationHeader === `Bearer ${secret}`;
 }
 
 export function unauthenticatedDestination(_pathname: string): string {

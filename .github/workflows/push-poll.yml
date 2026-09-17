@@ -1,0 +1,30 @@
+# Near-real-time Web Push poll (Vercel Hobby only allows 1 cron/day).
+# Secrets: CRON_SECRET, APP_URL (e.g. https://your-app.vercel.app)
+
+name: Push poll
+
+on:
+  schedule:
+    # Every 10 minutes
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /api/push/poll
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APP_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "APP_URL and CRON_SECRET secrets are required."
+            exit 1
+          fi
+          base="${APP_URL%/}"
+          curl -fsS -X POST "${base}/api/push/poll" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json" \
+            -d '{}'

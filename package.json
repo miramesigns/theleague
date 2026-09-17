@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
-    "test": "node --test --experimental-strip-types tests/access-control.test.ts tests/navigation.test.ts tests/mfl-login.test.ts tests/mfl-scores.test.ts tests/mfl-lineup.test.ts tests/mfl-roster.test.ts tests/mfl-standings.test.ts tests/all-rosters.test.ts tests/auto-refresh.test.ts tests/player-detail.test.ts tests/mfl-waivers.test.ts tests/mfl-trades.test.ts tests/mfl-trade-writes.test.ts tests/trade-value-help.test.ts tests/mfl-notifications.test.ts tests/notifications-store.test.ts tests/push.test.ts"
+    "test": "node --test --experimental-strip-types tests/access-control.test.ts tests/navigation.test.ts tests/mfl-login.test.ts tests/mfl-scores.test.ts tests/mfl-lineup.test.ts tests/mfl-roster.test.ts tests/mfl-standings.test.ts tests/all-rosters.test.ts tests/auto-refresh.test.ts tests/player-detail.test.ts tests/mfl-waivers.test.ts tests/mfl-trades.test.ts tests/mfl-trade-writes.test.ts tests/trade-value-help.test.ts tests/mfl-notifications.test.ts tests/notifications-store.test.ts tests/push.test.ts tests/push-poll.test.ts"
   },
   "dependencies": {
     "next": "latest",

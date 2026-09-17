@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+
 import { removeSubscription } from '@/lib/push-subscription-store';
 import { getMflSessionCookieValue } from '@/lib/mfl-session';
 import { resolvePrimaryFranchiseId } from '@/lib/mfl-scores';
@@ -21,6 +22,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, message: 'Endpoint required.' }, { status: 400 });
   }
 
-  removeSubscription(resolution.franchiseId, body.endpoint);
+  try {
+    await removeSubscription(resolution.franchiseId, body.endpoint);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Could not remove subscription.';
+    return NextResponse.json({ ok: false, message }, { status: 503 });
+  }
+
   return NextResponse.json({ ok: true });
 }

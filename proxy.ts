@@ -1,12 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { isPublicCompanionPath, unauthenticatedDestination } from './lib/access-control';
+import {
+  hasValidCronAuthorization,
+  isCronPushPath,
+  isPublicCompanionPath,
+  unauthenticatedDestination,
+} from './lib/access-control';
 import { MFL_SESSION_COOKIE_NAME } from './lib/mfl-session-constants';
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (isPublicCompanionPath(pathname) || request.cookies.has(MFL_SESSION_COOKIE_NAME)) {
+    return NextResponse.next();
+  }
+
+  // Vercel cron / GitHub Actions call push poll|send with Bearer CRON_SECRET (no session cookie).
+  if (isCronPushPath(pathname) && hasValidCronAuthorization(request.headers.get('authorization'))) {
     return NextResponse.next();
   }
 

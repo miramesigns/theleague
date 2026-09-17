@@ -1,6 +1,7 @@
 import { formatMflAssetLabels, parseMflAssetList } from './mfl-assets.ts';
 import { fetchMflExport } from './mfl.ts';
 import { formatMflMoney, formatMflTimestamp, splitMflIdList } from './mfl-format.ts';
+import { parsePendingTrades } from './mfl-trades.ts';
 import { parseBbidTransactionBlob, parseFreeAgentTransactionBlob } from './mfl-waivers.ts';
 import { resolvePrimaryFranchiseId } from './mfl-scores.ts';
 
@@ -16,6 +17,8 @@ export type LeagueNotification = {
   timestamp: number;
   timeLabel: string;
   href: string;
+  /** Empty = league-wide (notify all subscribed franchises). */
+  franchiseIds: string[];
 };
 
 export type NotificationsPageState = {
@@ -106,6 +109,7 @@ export function buildNotificationsFromTransactions(
         timestamp,
         timeLabel: formatMflTimestamp(timestamp),
         href: '/waivers',
+        franchiseIds: franchiseId ? [franchiseId] : [],
       });
       continue;
     }
@@ -122,6 +126,7 @@ export function buildNotificationsFromTransactions(
         timestamp,
         timeLabel: formatMflTimestamp(timestamp),
         href: '/waivers',
+        franchiseIds: franchiseId ? [franchiseId] : [],
       });
       continue;
     }
@@ -139,6 +144,7 @@ export function buildNotificationsFromTransactions(
         timestamp,
         timeLabel: formatMflTimestamp(timestamp),
         href: '/trades',
+        franchiseIds: [franchiseId, partnerId].filter(Boolean),
       });
       continue;
     }
@@ -152,6 +158,7 @@ export function buildNotificationsFromTransactions(
         timestamp,
         timeLabel: formatMflTimestamp(timestamp),
         href: '/lineup',
+        franchiseIds: [],
       });
       continue;
     }
@@ -165,6 +172,7 @@ export function buildNotificationsFromTransactions(
         timestamp,
         timeLabel: formatMflTimestamp(timestamp),
         href: '/waivers',
+        franchiseIds: [],
       });
       continue;
     }
@@ -180,6 +188,7 @@ export function buildNotificationsFromTransactions(
         timestamp,
         timeLabel: formatMflTimestamp(timestamp),
         href: '/roster',
+        franchiseIds: franchiseId ? [franchiseId] : [],
       });
     }
   }
@@ -234,10 +243,39 @@ export function buildScoreAlertNotifications(
       timestamp: now - index,
       timeLabel: 'Live board',
       href: `/scores${week ? `?week=${week}` : ''}`,
+      franchiseIds: [myTeam.id, opponent.id].filter(Boolean),
     });
   }
 
   return notifications;
+}
+
+/**
+ * Pending trade proposals — MFL emails owners when an offer is made (not only when completed).
+ * Targets the receiving franchise (`offeredto` / partnerId); also includes the offering franchise.
+ */
+export function buildPendingTradeNotifications(
+  pendingPayload: unknown,
+  playersPayload: unknown,
+  leaguePayload: unknown,
+): LeagueNotification[] {
+  const names = franchiseNames(leaguePayload);
+  const pending = parsePendingTrades(pendingPayload, playersPayload, names);
+
+  return pending.map((trade) => {
+    const receiverId = trade.partnerId;
+    const offererId = trade.franchiseId;
+    return {
+      id: trade.mflTradeId ? `pending-trade-${trade.mflTradeId}` : `pending-trade-${trade.id}`,
+      category: 'trade' as const,
+      title: 'Trade proposal',
+      body: trade.summary,
+      timestamp: trade.timestamp || Math.floor(Date.now() / 1000),
+      timeLabel: trade.timeLabel || formatMflTimestamp(trade.timestamp),
+      href: '/trades',
+      franchiseIds: [receiverId, offererId].filter(Boolean),
+    };
+  });
 }
 
 export function parseNotificationsPageState(input: {
@@ -246,25 +284,50 @@ export function parseNotificationsPageState(input: {
   league: unknown;
   liveScoring: unknown | null;
   primaryFranchiseId: string | null;
+  pendingTrades?: unknown | null;
 }): NotificationsPageState {
   const fromTx = buildNotificationsFromTransactions(input.transactions, input.players, input.league);
+  const fromPending = input.pendingTrades
+    ? buildPendingTradeNotifications(input.pendingTrades, input.players, input.league)
+    : [];
   const fromScores = input.liveScoring
     ? buildScoreAlertNotifications(input.liveScoring, input.league, input.primaryFranchiseId)
     : [];
 
-  const notifications = [...fromScores, ...fromTx]
+  const notifications = [...fromScores, ...fromPending, ...fromTx]
     .sort((left, right) => right.timestamp - left.timestamp)
     .slice(0, 80);
 
   return {
     ok: notifications.length > 0,
     message: notifications.length > 0
-      ? 'In-app alerts from recent MFL activity. Push delivery stays draft/opt-in.'
+      ? 'In-app alerts from recent MFL activity. Opt in below for Web Push on the same email-style events.'
       : 'No recent league activity to surface yet.',
     franchiseId: input.primaryFranchiseId,
     notifications,
     pushDraftAvailable: true,
   };
+}
+
+/** Build the full candidate set for push polling (transactions + pending trades + optional scores). */
+export function buildPushCandidateNotifications(input: {
+  transactions: unknown;
+  players: unknown;
+  league: unknown;
+  liveScoring: unknown | null;
+  pendingTrades: unknown | null;
+  includeScores?: boolean;
+}): LeagueNotification[] {
+  const fromTx = buildNotificationsFromTransactions(input.transactions, input.players, input.league);
+  const fromPending = input.pendingTrades
+    ? buildPendingTradeNotifications(input.pendingTrades, input.players, input.league)
+    : [];
+  const fromScores =
+    input.includeScores !== false && input.liveScoring
+      ? buildScoreAlertNotifications(input.liveScoring, input.league, null)
+      : [];
+
+  return [...fromScores, ...fromPending, ...fromTx].sort((left, right) => right.timestamp - left.timestamp);
 }
 
 function transactionKey(entry: RecordValue): string {
@@ -297,13 +360,16 @@ export async function loadNotificationsPageState(sessionCookieValue: string | nu
   const options = { sessionCookieValue: sessionCookieValue ?? undefined, cache: 'no-store' as const };
 
   try {
-    const [primary, leagueResponse, playersResponse, generalTxResponse, waiverTxResponse, tradeTxResponse, liveResponse] = await Promise.all([
+    const [primary, leagueResponse, playersResponse, generalTxResponse, waiverTxResponse, tradeTxResponse, pendingResponse, liveResponse] = await Promise.all([
       resolvePrimaryFranchiseId(sessionCookieValue),
       fetchMflExport('league', { JSON: '1' }, options),
       fetchMflExport('players', { JSON: '1' }, { revalidate: 60 * 60 * 24 }),
       fetchMflExport('transactions', { JSON: '1', COUNT: '60' }, options),
       fetchMflExport('transactions', { JSON: '1', TRANS_TYPE: 'BBID_WAIVER', COUNT: '30' }, options),
       fetchMflExport('transactions', { JSON: '1', TRANS_TYPE: 'TRADE', COUNT: '30' }, options),
+      sessionCookieValue
+        ? fetchMflExport('pendingTrades', { JSON: '1' }, options)
+        : Promise.resolve(null),
       fetchMflExport('liveScoring', { JSON: '1' }, { ...options, revalidate: 75 }),
     ]);
 
@@ -317,13 +383,14 @@ export async function loadNotificationsPageState(sessionCookieValue: string | nu
       };
     }
 
-    const read = (response: Response) => (response.ok ? response.json().catch(() => null) : Promise.resolve(null));
-    const [league, players, generalTx, waiverTx, tradeTx, liveScoring] = await Promise.all([
+    const read = (response: Response | null) => (response?.ok ? response.json().catch(() => null) : Promise.resolve(null));
+    const [league, players, generalTx, waiverTx, tradeTx, pendingTrades, liveScoring] = await Promise.all([
       read(leagueResponse),
       read(playersResponse),
       read(generalTxResponse),
       read(waiverTxResponse),
       read(tradeTxResponse),
+      read(pendingResponse),
       read(liveResponse),
     ]);
 
@@ -333,6 +400,7 @@ export async function loadNotificationsPageState(sessionCookieValue: string | nu
       league,
       liveScoring,
       primaryFranchiseId: primary?.franchiseId ?? null,
+      pendingTrades,
     });
   } catch {
     return {
@@ -343,4 +411,63 @@ export async function loadNotificationsPageState(sessionCookieValue: string | nu
       pushDraftAvailable: true,
     };
   }
+}
+
+export async function loadPushPollSourcePayloads(sessionCookieValue: string): Promise<{
+  ok: boolean;
+  message?: string;
+  transactions: unknown;
+  players: unknown;
+  league: unknown;
+  liveScoring: unknown | null;
+  pendingTrades: unknown | null;
+}> {
+  const options = { sessionCookieValue, cache: 'no-store' as const };
+
+  const [leagueResponse, playersResponse, generalTxResponse, waiverTxResponse, tradeTxResponse, irTxResponse, taxiTxResponse, pendingResponse, liveResponse] =
+    await Promise.all([
+      fetchMflExport('league', { JSON: '1' }, options),
+      fetchMflExport('players', { JSON: '1' }, { revalidate: 60 * 60 * 24 }),
+      fetchMflExport('transactions', { JSON: '1', COUNT: '60' }, options),
+      fetchMflExport('transactions', { JSON: '1', TRANS_TYPE: 'BBID_WAIVER', COUNT: '30' }, options),
+      fetchMflExport('transactions', { JSON: '1', TRANS_TYPE: 'TRADE', COUNT: '30' }, options),
+      fetchMflExport('transactions', { JSON: '1', TRANS_TYPE: 'IR', COUNT: '20' }, options),
+      fetchMflExport('transactions', { JSON: '1', TRANS_TYPE: 'TAXI', COUNT: '20' }, options),
+      fetchMflExport('pendingTrades', { JSON: '1' }, options),
+      fetchMflExport('liveScoring', { JSON: '1' }, { ...options, revalidate: 75 }),
+    ]);
+
+  if (!leagueResponse.ok || !playersResponse.ok || !generalTxResponse.ok) {
+    return {
+      ok: false,
+      message: 'Could not load MFL exports for push poll.',
+      transactions: null,
+      players: null,
+      league: null,
+      liveScoring: null,
+      pendingTrades: null,
+    };
+  }
+
+  const read = (response: Response) => (response.ok ? response.json().catch(() => null) : Promise.resolve(null));
+  const [league, players, generalTx, waiverTx, tradeTx, irTx, taxiTx, pendingTrades, liveScoring] = await Promise.all([
+    read(leagueResponse),
+    read(playersResponse),
+    read(generalTxResponse),
+    read(waiverTxResponse),
+    read(tradeTxResponse),
+    read(irTxResponse),
+    read(taxiTxResponse),
+    read(pendingResponse),
+    read(liveResponse),
+  ]);
+
+  return {
+    ok: true,
+    transactions: mergeTransactionPayloads(generalTx, waiverTx, tradeTx, irTx, taxiTx),
+    players,
+    league,
+    liveScoring,
+    pendingTrades,
+  };
 }
