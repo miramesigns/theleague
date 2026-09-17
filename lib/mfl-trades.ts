@@ -68,6 +68,17 @@ function text(value: unknown): string {
   if (typeof value === 'string' || typeof value === 'number') return String(value).trim();
   const item = record(value);
   if (!item) return '';
+  // MFL JSON wraps XML attributes in @attributes
+  const attrs = record(item['@attributes']);
+  if (attrs) {
+    for (const key of ['id', 'name', '#text', '$t']) {
+      const candidate = attrs[key];
+      if (typeof candidate === 'string' || typeof candidate === 'number') {
+        const next = String(candidate).trim();
+        if (next) return next;
+      }
+    }
+  }
   for (const key of ['#text', '$t', 'name', 'id']) {
     const candidate = item[key];
     if (typeof candidate === 'string' || typeof candidate === 'number') {
