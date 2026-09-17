@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { WeekPicker } from '@/components/week-picker';
-import { formatLineupRowMeta } from '@/lib/mfl-lineup';
+import { formatLineupRowMeta, formatLineupSubmissionCue } from '@/lib/mfl-lineup';
 import type { LineupPageState, LineupRosterSnapshot } from '@/lib/mfl-lineup';
 
 type DraftState = Record<string, boolean>;
@@ -169,6 +169,11 @@ export function LineupEditor({ state }: { state: LineupPageState }) {
         <div>
           <h1 className="eyebrow">Submit Lineup</h1>
           <div className="small muted">{state.franchiseName || `Franchise ${state.franchiseId ?? ''}`}</div>
+          {state.selectedWeek !== null ? (
+            <div className="small muted" role="status">
+              {formatLineupSubmissionCue(state.selectedWeek, state.hasSubmittedLineup)}
+            </div>
+          ) : null}
         </div>
         <div className="scores-controls">
           {state.currentWeek && state.selectedWeek ? (

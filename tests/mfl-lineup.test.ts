@@ -7,10 +7,12 @@ import {
   importLineupSubmission,
   deriveTeamByeWeeks,
   formatLineupRowMeta,
+  formatLineupSubmissionCue,
   loadLineupSubmissionContext,
   loadLineupPageState,
   normalizeLineupInjuryDesignation,
   parseLineupRules,
+  resolveHasSubmittedLineup,
   resolveRosterPlayerName,
   validateLineupSubmission,
 } from '../lib/mfl-lineup.ts';
@@ -201,26 +203,21 @@ function makePlayersPayloadWithDirectoryName() {
   };
 }
 
-function makePlayerStatusPayload() {
+function makePlayerStatusPayload(starters = '00123,') {
+  const starterIds = starters.split(',').map((value) => value.trim()).filter(Boolean);
+  const starterSet = new Set(starterIds);
+  const allIds = ['00123', '00234', '00235', '00345', '00346', '00347', '00456', '00457', '00567', '00678'];
   return {
     weeklyResults: {
       week: '8',
       matchup: [{
         franchise: [{
           id: '0004',
-          starters: '00123,',
-          player: [
-            { id: '00123', status: 'starter' },
-            { id: '00234', status: 'nonstarter' },
-            { id: '00235', status: 'nonstarter' },
-            { id: '00345', status: 'nonstarter' },
-            { id: '00346', status: 'nonstarter' },
-            { id: '00347', status: 'nonstarter' },
-            { id: '00456', status: 'nonstarter' },
-            { id: '00457', status: 'nonstarter' },
-            { id: '00567', status: 'nonstarter' },
-            { id: '00678', status: 'nonstarter' },
-          ],
+          starters,
+          player: allIds.map((id) => ({
+            id,
+            status: starterSet.has(id) ? 'starter' : 'nonstarter',
+          })),
         }],
       }],
     },
@@ -342,6 +339,54 @@ function makeMyLeaguesPayload(franchiseId = '0004') {
   };
 }
 
+test('formatLineupSubmissionCue uses Daniel short copy', () => {
+  assert.equal(formatLineupSubmissionCue(2, false), 'week 2 not submitted');
+  assert.equal(formatLineupSubmissionCue(8, true), 'submitted');
+});
+
+test('resolveHasSubmittedLineup treats identical pre-kickoff starters as carried, not submitted', () => {
+  const starters = new Set(['00123', '00234']);
+  assert.equal(resolveHasSubmittedLineup({
+    starterIds: starters,
+    previousStarterIds: new Set(['00123', '00234']),
+    selectedWeek: 2,
+    currentWeek: 2,
+    kickoffStarted: false,
+  }), false);
+
+  assert.equal(resolveHasSubmittedLineup({
+    starterIds: starters,
+    previousStarterIds: new Set(['00123']),
+    selectedWeek: 2,
+    currentWeek: 2,
+    kickoffStarted: false,
+  }), true);
+
+  assert.equal(resolveHasSubmittedLineup({
+    starterIds: starters,
+    previousStarterIds: new Set(['00123', '00234']),
+    selectedWeek: 2,
+    currentWeek: 2,
+    kickoffStarted: true,
+  }), true);
+
+  assert.equal(resolveHasSubmittedLineup({
+    starterIds: starters,
+    previousStarterIds: new Set(['00123', '00234']),
+    selectedWeek: 1,
+    currentWeek: 2,
+    kickoffStarted: false,
+  }), true);
+
+  assert.equal(resolveHasSubmittedLineup({
+    starterIds: new Set(),
+    previousStarterIds: null,
+    selectedWeek: 2,
+    currentWeek: 2,
+    kickoffStarted: false,
+  }), false);
+});
+
 test('parseLineupRules derives flexible starter bands from the league export', () => {
   const rules = parseLineupRules(makeLeaguePayload());
 
@@ -401,7 +446,11 @@ test('loadLineupPageState resolves the authenticated franchise and preserves lea
     ]));
     if (type === 'rosters') return createJsonResponse(makeRosterPayload());
     if (type === 'players') return createJsonResponse(makePlayersPayload());
-    if (type === 'weeklyResults') return createJsonResponse(makePlayerStatusPayload());
+    if (type === 'weeklyResults') {
+      const week = url.searchParams.get('W');
+      if (week === '7') return createJsonResponse(makePlayerStatusPayload('00234,'));
+      return createJsonResponse(makePlayerStatusPayload('00123,'));
+    }
     if (type === 'projectedScores') return createJsonResponse(makeProjectedScoresPayload());
     if (type === 'playerScores') return createJsonResponse(makePlayerScoresPayload());
     if (type === 'injuries') return createJsonResponse(makeInjuriesPayload());
@@ -443,6 +492,44 @@ test('loadLineupPageState resolves the authenticated franchise and preserves lea
   }
 });
 
+test('loadLineupPageState keeps carried starters but marks the week as not submitted', async () => {
+  const originalFetch = globalThis.fetch;
+  const baseEnv = { ...process.env };
+  process.env.MFL_PRIMARY_FRANCHISE_ID = '0004';
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = new URL(String(input));
+    const type = url.searchParams.get('TYPE');
+
+    if (type === 'myleagues') return createJsonResponse(makeMyLeaguesPayload());
+    if (type === 'league') return createJsonResponse(makeLeaguePayload());
+    if (type === 'liveScoring') return createJsonResponse(makeLiveScoringWeekPayload('8'));
+    if (type === 'schedule') return createJsonResponse(makeSchedulePayload());
+    if (type === 'rosters') return createJsonResponse(makeRosterPayload());
+    if (type === 'players') return createJsonResponse(makePlayersPayload());
+    if (type === 'weeklyResults') return createJsonResponse(makePlayerStatusPayload('00123,'));
+    if (type === 'projectedScores') return createJsonResponse(makeProjectedScoresPayload());
+    if (type === 'playerScores') return createJsonResponse(makePlayerScoresPayload());
+    if (type === 'injuries') return createJsonResponse(makeInjuriesPayload());
+    if (type === 'topStarters') return createJsonResponse(makeTopStartersPayload());
+    if (type === 'nflSchedule') return createJsonResponse(makeNflSchedulePayload());
+
+    return new Response('not found', { status: 404 });
+  }) as typeof fetch;
+
+  try {
+    const state = await loadLineupPageState('session-123', '8');
+
+    assert.equal(state.selectedWeek, 8);
+    assert.equal(state.hasSubmittedLineup, false);
+    assert.equal(formatLineupSubmissionCue(state.selectedWeek!, state.hasSubmittedLineup), 'week 8 not submitted');
+    assert.equal(state.rows.find((row) => row.id === '00123')?.selected, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreEnv(baseEnv);
+  }
+});
+
 test('loadLineupPageState defaults to the live MFL current week instead of schedule metadata', async () => {
   const originalFetch = globalThis.fetch;
   const baseEnv = { ...process.env };
@@ -458,7 +545,11 @@ test('loadLineupPageState defaults to the live MFL current week instead of sched
     if (type === 'schedule') return createJsonResponse({ schedule: { currentWeek: '1', week: [{ week: '1' }, { week: '8' }] } });
     if (type === 'rosters') return createJsonResponse(makeRosterPayload());
     if (type === 'players') return createJsonResponse(makePlayersPayload());
-    if (type === 'weeklyResults') return createJsonResponse(makePlayerStatusPayload());
+    if (type === 'weeklyResults') {
+      const week = url.searchParams.get('W');
+      if (week === '7') return createJsonResponse(makePlayerStatusPayload('00234,'));
+      return createJsonResponse(makePlayerStatusPayload('00123,'));
+    }
     if (type === 'projectedScores') return createJsonResponse(makeProjectedScoresPayload());
     if (type === 'playerScores') return createJsonResponse(makePlayerScoresPayload());
     if (type === 'injuries') return createJsonResponse(makeInjuriesPayload());
@@ -494,7 +585,11 @@ test('loadLineupPageState fixes a benched player after the real NFL kickoff', as
     if (type === 'schedule') return createJsonResponse(makeSchedulePayload());
     if (type === 'rosters') return createJsonResponse(makeRosterPayload());
     if (type === 'players') return createJsonResponse(makePlayersPayload());
-    if (type === 'weeklyResults') return createJsonResponse(makePlayerStatusPayload());
+    if (type === 'weeklyResults') {
+      const week = url.searchParams.get('W');
+      if (week === '7') return createJsonResponse(makePlayerStatusPayload('00234,'));
+      return createJsonResponse(makePlayerStatusPayload('00123,'));
+    }
     if (type === 'projectedScores') return createJsonResponse(makeProjectedScoresPayload());
     if (type === 'playerScores') return createJsonResponse(makePlayerScoresPayload());
     if (type === 'injuries') return createJsonResponse(makeInjuriesPayload());
@@ -533,7 +628,11 @@ test('loadLineupPageState prefers the players directory name when the roster exp
     if (type === 'schedule') return createJsonResponse(makeSchedulePayload());
     if (type === 'rosters') return createJsonResponse(makeRosterPayloadWithMissingNames());
     if (type === 'players') return createJsonResponse(makePlayersPayloadWithDirectoryName());
-    if (type === 'weeklyResults') return createJsonResponse(makePlayerStatusPayload());
+    if (type === 'weeklyResults') {
+      const week = url.searchParams.get('W');
+      if (week === '7') return createJsonResponse(makePlayerStatusPayload('00234,'));
+      return createJsonResponse(makePlayerStatusPayload('00123,'));
+    }
     if (type === 'projectedScores') return createJsonResponse(makeProjectedScoresPayload());
     if (type === 'injuries') return createJsonResponse(makeInjuriesPayload());
     if (type === 'topStarters') return createJsonResponse(makeTopStartersPayload());
@@ -568,7 +667,11 @@ test('loadLineupPageState keeps a genuine roster-provided name', async () => {
     if (type === 'schedule') return createJsonResponse(makeSchedulePayload());
     if (type === 'rosters') return createJsonResponse(makeRosterPayloadWithGenuineRosterName());
     if (type === 'players') return createJsonResponse(makePlayersPayloadWithDirectoryName());
-    if (type === 'weeklyResults') return createJsonResponse(makePlayerStatusPayload());
+    if (type === 'weeklyResults') {
+      const week = url.searchParams.get('W');
+      if (week === '7') return createJsonResponse(makePlayerStatusPayload('00234,'));
+      return createJsonResponse(makePlayerStatusPayload('00123,'));
+    }
     if (type === 'projectedScores') return createJsonResponse(makeProjectedScoresPayload());
     if (type === 'injuries') return createJsonResponse(makeInjuriesPayload());
     if (type === 'topStarters') return createJsonResponse(makeTopStartersPayload());
@@ -603,7 +706,11 @@ test('loadLineupPageState scopes selected-week dynamic data requests to the chos
     if (type === 'schedule') return createJsonResponse(makeSchedulePayload());
     if (type === 'rosters') return createJsonResponse(makeRosterPayload());
     if (type === 'players') return createJsonResponse(makePlayersPayload());
-    if (type === 'weeklyResults') return createJsonResponse(makePlayerStatusPayload());
+    if (type === 'weeklyResults') {
+      const week = url.searchParams.get('W');
+      if (week === '7') return createJsonResponse(makePlayerStatusPayload('00234,'));
+      return createJsonResponse(makePlayerStatusPayload('00123,'));
+    }
     if (type === 'projectedScores') return createJsonResponse(makeProjectedScoresPayload());
     if (type === 'injuries') return createJsonResponse(makeInjuriesPayload());
     if (type === 'topStarters') return createJsonResponse(makeTopStartersPayload());
@@ -887,7 +994,9 @@ test('POST reports upstream auth, throttle, verified success, and mismatch error
     if (type === 'players') return createJsonResponse(makePlayersPayload());
     if (type === 'weeklyResults') {
       if (phase === 'context') {
-        return createJsonResponse(makePlayerStatusPayload());
+        const week = url.searchParams.get('W');
+        if (week === '7') return createJsonResponse(makePlayerStatusPayload('00234,'));
+        return createJsonResponse(makePlayerStatusPayload('00123,'));
       }
 
       phase = 'done';
@@ -960,7 +1069,11 @@ test('importLineupSubmission maps upstream 401 and 429 errors to sanitized respo
     if (type === 'schedule') return createJsonResponse(makeSchedulePayload());
     if (type === 'rosters') return createJsonResponse(makeRosterPayload());
     if (type === 'players') return createJsonResponse(makePlayersPayload());
-    if (type === 'weeklyResults') return createJsonResponse(makePlayerStatusPayload());
+    if (type === 'weeklyResults') {
+      const week = url.searchParams.get('W');
+      if (week === '7') return createJsonResponse(makePlayerStatusPayload('00234,'));
+      return createJsonResponse(makePlayerStatusPayload('00123,'));
+    }
     if (type === 'projectedScores') return createJsonResponse(makeProjectedScoresPayload());
     if (type === 'injuries') return createJsonResponse(makeInjuriesPayload());
     if (type === 'topStarters') return createJsonResponse(makeTopStartersPayload());
