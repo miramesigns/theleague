@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   counterDraftFromPendingTrade,
+  franchiseDisplayLabel,
   parseCompletedTrades,
   parsePendingTrades,
   parseTradeBait,
@@ -169,6 +170,41 @@ test('parsePendingTrades never labels missing franchises as Franchise ?', () => 
   assert.doesNotMatch(pending[0].franchiseName, /\?/);
 });
 
+test('franchiseDisplayLabel falls back from emoji-only name to abbrev then Franchise id', () => {
+  assert.equal(
+    franchiseDisplayLabel({
+      name: '🏆 🏆 🏆 🏆 🏆 🏆 🏆 ',
+      abbrev: '3-Peat ',
+      id: '0005',
+    }),
+    '3-Peat',
+  );
+  assert.equal(
+    franchiseDisplayLabel({
+      name: '🏆 🏆 🏆 🏆 🏆 🏆 🏆',
+      abbrev: '',
+      id: '0005',
+    }),
+    'Franchise 0005',
+  );
+  assert.equal(
+    franchiseDisplayLabel({
+      name: 'The Ashy Elbows',
+      abbrev: 'Elbows',
+      id: '0004',
+    }),
+    'The Ashy Elbows',
+  );
+  assert.doesNotMatch(
+    franchiseDisplayLabel({
+      name: '🏆 🏆 🏆 🏆 🏆 🏆 🏆',
+      abbrev: '3-Peat',
+      id: '0005',
+    }),
+    /Unknown/i,
+  );
+});
+
 test('parseTradesPageState resolves pending offeringteam names via league franchise map', () => {
   const state = parseTradesPageState({
     authenticated: true,
@@ -215,9 +251,13 @@ test('parseTradesPageState resolves pending offeringteam names via league franch
   assert.equal(state.pending.length, 1);
   assert.equal(state.pending[0].franchiseId, '0005');
   assert.equal(state.pending[0].partnerId, '0004');
-  assert.equal(state.pending[0].franchiseName, '🏆 🏆 🏆 🏆 🏆 🏆 🏆');
+  // Emoji-only MFL names are not used as UI labels (mobile WebViews often mojibake them).
+  assert.equal(state.pending[0].franchiseName, '3-Peat');
   assert.equal(state.pending[0].partnerName, 'The Ashy Elbows');
   assert.equal(state.pending[0].id, 'pending-1587');
+  assert.equal(state.franchises.find((f) => f.id === '0005')?.name, '3-Peat');
+  assert.doesNotMatch(state.pending[0].franchiseName, /Unknown/i);
+  assert.doesNotMatch(state.pending[0].franchiseName, /🏆/);
 });
 
 test('counterDraftFromPendingTrade swaps assets for the primary franchise', () => {
