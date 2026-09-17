@@ -72,13 +72,20 @@ export function TradeCard({
   onAccept,
   onDecline,
   onCounter,
+  onRevoke,
+  onAmend,
 }: {
   trade: TradeRow;
   onAccept?: () => void;
   onDecline?: () => void;
   onCounter?: () => void;
+  onRevoke?: () => void;
+  onAmend?: () => void;
 }) {
   const isPending = trade.status === 'pending';
+  const hasIncomingActions = Boolean(onAccept || onDecline || onCounter);
+  const hasOutgoingActions = Boolean(onRevoke || onAmend);
+  const showActions = isPending && (hasIncomingActions || hasOutgoingActions);
 
   return (
     <article className={`trade-card${isPending ? ' trade-card-pending' : ''}`}>
@@ -100,11 +107,12 @@ export function TradeCard({
         {trade.expiresLabel ? <span>· expires {trade.expiresLabel}</span> : null}
         {trade.byCommish ? <span className="trade-commish">commissioner assisted</span> : null}
         {isPending ? <span className="trade-status-pending">Pending</span> : null}
+        {hasOutgoingActions ? <span className="trade-status-pending">Your offer</span> : null}
       </div>
       {trade.valueRead ? (
         <TradeValueHelp valueRead={trade.valueRead} playerNames={playerLabelsForManual(trade)} />
       ) : null}
-      {isPending && (onAccept || onDecline || onCounter) ? (
+      {showActions ? (
         <div className="trade-actions">
           {onAccept ? (
             <button type="button" className="button primary trade-action-btn" onClick={onAccept}>
@@ -119,6 +127,16 @@ export function TradeCard({
           {onCounter ? (
             <button type="button" className="button ghost trade-action-btn" onClick={onCounter}>
               Counter
+            </button>
+          ) : null}
+          {onAmend ? (
+            <button type="button" className="button primary trade-action-btn" onClick={onAmend}>
+              Amend &amp; resend
+            </button>
+          ) : null}
+          {onRevoke ? (
+            <button type="button" className="button ghost trade-action-btn" onClick={onRevoke}>
+              Cancel offer
             </button>
           ) : null}
         </div>

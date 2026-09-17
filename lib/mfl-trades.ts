@@ -21,6 +21,8 @@ export type TradeFranchiseOption = {
 
 export type TradeRow = {
   id: string;
+  /** Raw MFL pendingTrades trade_id when available (for respond/revoke). */
+  mflTradeId: string | null;
   timestamp: number;
   timeLabel: string;
   expiresAt: number | null;
@@ -287,6 +289,7 @@ export function parseCompletedTrades(
 
       return {
         id: `trade-${franchiseId}-${partnerId}-${timestamp}-${index}`,
+        mflTradeId: null,
         timestamp,
         timeLabel: formatMflTimestamp(timestamp),
         expiresAt,
@@ -353,13 +356,15 @@ export function parsePendingTrades(
     const timestamp = numberValue(entryValue(entry, 'timestamp')) ?? 0;
     const expiresAt = numberValue(entryValue(entry, 'expires', 'expiration'));
     const tradeId = text(entryValue(entry, 'trade_id', 'id'));
+    const mflTradeId = /^\d+$/.test(tradeId) ? tradeId : null;
     const franchiseName = resolveFranchiseName(names, franchiseId);
     const partnerName = resolveFranchiseName(names, partnerId);
 
     return {
-      id: tradeId
-        ? `pending-${tradeId}`
+      id: mflTradeId
+        ? `pending-${mflTradeId}`
         : `pending-${franchiseId || 'unk'}-${partnerId || 'unk'}-${timestamp}-${index}`,
+      mflTradeId,
       timestamp,
       timeLabel: formatMflTimestamp(timestamp),
       expiresAt,
@@ -486,7 +491,7 @@ function parseFreeAgentAssets(freeAgentsPayload: unknown, playersPayload: unknow
 export function counterDraftFromPendingTrade(
   trade: TradeRow,
   primaryFranchiseId: string | null,
-): { partnerId: string; offeringPlayerIds: string[]; requestingPlayerIds: string[] } {
+): { partnerId: string; offeringPlayerIds: string[]; requestingPlayerIds: string[]; revokeTradeId: null } {
   const perspective = perspectiveAssetsForTrade({
     franchiseId: trade.franchiseId,
     partnerId: trade.partnerId,
@@ -505,7 +510,46 @@ export function counterDraftFromPendingTrade(
     partnerId: otherId,
     offeringPlayerIds: perspective.get.filter((asset) => asset.kind === 'player').map((asset) => asset.id),
     requestingPlayerIds: perspective.give.filter((asset) => asset.kind === 'player').map((asset) => asset.id),
+    revokeTradeId: null,
   };
+}
+
+/**
+ * Prefill an amend draft for an outgoing pending offer (same partner + assets).
+ * Submitting should revoke the old trade_id then propose new terms.
+ */
+export function amendDraftFromPendingTrade(
+  trade: TradeRow,
+): {
+  partnerId: string;
+  offeringPlayerIds: string[];
+  requestingPlayerIds: string[];
+  revokeTradeId: string | null;
+  expiresDays: number | null;
+} {
+  const now = Math.floor(Date.now() / 1000);
+  const expiresDays =
+    trade.expiresAt && trade.expiresAt > now
+      ? Math.max(1, Math.ceil((trade.expiresAt - now) / (24 * 60 * 60)))
+      : null;
+
+  return {
+    partnerId: trade.partnerId,
+    offeringPlayerIds: trade.offered.filter((asset) => asset.kind === 'player').map((asset) => asset.id),
+    requestingPlayerIds: trade.requested.filter((asset) => asset.kind === 'player').map((asset) => asset.id),
+    revokeTradeId: trade.mflTradeId,
+    expiresDays,
+  };
+}
+
+/** True when the signed-in franchise originated this pending offer. */
+export function isOutgoingPendingTrade(trade: TradeRow, primaryFranchiseId: string | null): boolean {
+  return Boolean(primaryFranchiseId && trade.franchiseId === primaryFranchiseId);
+}
+
+/** True when the signed-in franchise is the target of this pending offer. */
+export function isIncomingPendingTrade(trade: TradeRow, primaryFranchiseId: string | null): boolean {
+  return Boolean(primaryFranchiseId && trade.partnerId === primaryFranchiseId);
 }
 
 export function parseTradesPageState(input: {
