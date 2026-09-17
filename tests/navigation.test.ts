@@ -3,12 +3,12 @@ import test from 'node:test';
 
 import { moreLinks, primaryTabs } from '../lib/navigation.ts';
 
-test('primary navigation keeps roster and standings visible while waivers and trades live under More', () => {
+test('primary navigation keeps roster and trades visible while waivers and standings live under More', () => {
   assert.deepEqual(primaryTabs, [
     { href: '/scores', label: 'Scores' },
     { href: '/lineup', label: 'Lineup' },
     { href: '/roster', label: 'Roster' },
-    { href: '/standings', label: 'Standings' },
+    { href: '/trades', label: 'Trades' },
     { href: '/more', label: 'More' },
   ]);
 });
@@ -19,11 +19,11 @@ test('More exposes Notifications and All Rosters without changing the five prima
   assert.equal(primaryTabs.length, 5);
 });
 
-test('More includes notifications alongside waivers and trades', () => {
+test('More includes notifications alongside waivers and standings', () => {
   assert.deepEqual(moreLinks.map((link) => link.href), [
     '/notifications',
     '/all-rosters',
     '/waivers',
-    '/trades',
+    '/standings',
   ]);
 });

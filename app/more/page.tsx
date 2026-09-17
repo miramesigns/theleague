@@ -6,7 +6,7 @@ export default function MorePage() {
       <div className="banner">
         <div>
           <div className="eyebrow">More</div>
-          <div className="small muted">Notifications, waivers, and trades.</div>
+          <div className="small muted">Notifications, waivers, and standings.</div>
         </div>
         <span className="pill">Sign in from the header</span>
       </div>
