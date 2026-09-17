@@ -146,6 +146,31 @@ function resolveFranchiseName(names: Map<string, string>, id: string): string {
   return names.get(id) || names.get(id.padStart(4, '0')) || `Franchise ${id}`;
 }
 
+/** True when the string contains at least one ASCII letter or digit. */
+export function franchiseNameHasAlphanumeric(value: string): boolean {
+  return /[0-9A-Za-z]/.test(value);
+}
+
+/**
+ * Readable UI label for a franchise.
+ * Emoji-only (no letters/digits) names fall back to abbrev, then `Franchise {id}`.
+ * Keeps real emoji names available upstream; trade cards / pickers should not be emoji-only.
+ */
+export function franchiseDisplayLabel(input: {
+  name?: string | null;
+  abbrev?: string | null;
+  id?: string | null;
+}): string {
+  const name = (input.name ?? '').trim();
+  const abbrev = (input.abbrev ?? '').trim();
+  const id = (input.id ?? '').trim();
+
+  if (name && franchiseNameHasAlphanumeric(name)) return name;
+  if (abbrev) return abbrev;
+  if (id) return `Franchise ${id}`;
+  return name || 'Unknown franchise';
+}
+
 function mflErrorMessage(payload: unknown): string | null {
   return text(record(payload)?.error) || null;
 }
@@ -222,11 +247,11 @@ function franchiseDirectory(payload: unknown): Map<string, string> {
       .map((franchise) => {
         const attrs = record(franchise['@attributes']);
         const id = normalizeFranchiseId(franchise.id ?? attrs?.id ?? franchise.franchise_id);
-        // Prefer display name (emoji-only names are valid); fall back to abbrev, never invent Unknown when id exists.
-        const name =
-          text(franchise.name ?? attrs?.name ?? franchise.franchise_name) ||
-          text(franchise.abbrev ?? attrs?.abbrev ?? franchise.abbreviation) ||
-          (id ? `Franchise ${id}` : '');
+        const name = franchiseDisplayLabel({
+          name: text(franchise.name ?? attrs?.name ?? franchise.franchise_name),
+          abbrev: text(franchise.abbrev ?? attrs?.abbrev ?? franchise.abbreviation),
+          id,
+        });
         return [id, name] as const;
       })
       .filter(([id, name]) => Boolean(id) && Boolean(name)),
