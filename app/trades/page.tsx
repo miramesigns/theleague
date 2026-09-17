@@ -1,21 +1,30 @@
-export default function TradesPage() {
+import { TradesBoard } from '@/components/trades-board';
+import { getMflSessionCookieValue } from '@/lib/mfl-session';
+import { loadTradesPageState } from '@/lib/mfl-trades';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+export default async function TradesPage() {
+  const state = await loadTradesPageState(await getMflSessionCookieValue());
+
   return (
     <main className="grid">
       <div className="banner">
         <div>
           <div className="eyebrow">Trades</div>
-          <div className="small muted">Offer board and acceptance flow placeholder.</div>
+          <div className="small muted">{state.message}</div>
         </div>
-        <span className="pill">Negotiation lane</span>
+        <span className="pill">{state.pending.length} pending</span>
       </div>
 
-      <section className="panel section">
-        <div className="stack">
-          <div className="stat-row"><span>Pending offers</span><strong>2</strong></div>
-          <div className="stat-row"><span>Last counter</span><strong>RB + WR</strong></div>
-          <div className="stat-row"><span>Review window</span><strong>24h</strong></div>
-        </div>
-      </section>
+      {!state.ok ? (
+        <section className="panel section">
+          <p className="muted">{state.message}</p>
+        </section>
+      ) : (
+        <TradesBoard state={state} />
+      )}
     </main>
   );
 }

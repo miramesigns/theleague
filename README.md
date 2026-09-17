@@ -10,8 +10,24 @@ A phone-first Next.js App Router companion for a MyFantasyLeague league.
 - `Lineup` editor with the 10-starter rules and a confirmation modal.
 - Server-side lineup import route with roster validation and post-submit MFL verification.
 - Server-side login route architecture that keeps only an `MFL_USER_ID` httpOnly session cookie.
-- Basic `Waivers`, `Trades`, `More`, plus `Roster` and `Standings` pages.
+- Real `Waivers` board (free agents + FAAB rules + recent claims) and `Trades` board (history/pending/bait + draft offer UI).
+- In-app `Notifications` center derived from MFL transactions / live scores, with optional Web Push opt-in drafted locally (no paid vendor).
+- `More`, `Roster`, `Standings`, and `All Rosters` pages.
 - Manifest and SVG icons for PWA plumbing.
+
+## Live vs confirmation-gated
+
+| Flow | Read from MFL | Draft in UI | Live write to MFL |
+| --- | --- | --- | --- |
+| Scores / Rosters / Standings / Lineup editor | Yes | Lineup yes | Lineup submit via `/api/mfl/lineup` after confirm dialog |
+| Free agents / FAAB rules / recent waivers | Yes (`freeAgents`, `league`, `transactions`) | Claim draft yes | `/api/waivers/claim` requires `confirmed: true` and currently returns **501 stub** |
+| Pending waivers | Yes when session cookie present (`pendingWaivers`) | — | Same claim stub |
+| Trades history / trade bait | Yes (`transactions` TRADE, `tradeBait`) | Propose draft yes | `/api/trades/propose` requires `confirmed: true` and currently returns **501 stub** |
+| Pending trades | Yes when session cookie present (`pendingTrades`) | — | Same propose stub |
+| Notifications | Yes (transactions + live scoring) | Category prefs + Web Push draft in `localStorage` | No outbound push sender registered |
+| Legacy `/api/lineup/import` | — | — | Still a **501** ask-before-send stub |
+
+No silent MFL mutations: every write path requires an explicit confirmation step in the UI and a `confirmed` (or equivalent confirm dialog) gate on the server.
 
 ## Setup
 
@@ -42,6 +58,11 @@ Defaults are already wired for the requested league settings, so the app works w
 The proxy always sends `User-Agent: PlugGrokBot` and caches shared live scoring responses for about 75 seconds.
 `MFL_PRIMARY_FRANCHISE_ID` is the documented temporary fallback for local smoke testing only.
 
+Verified live export types used in this slice:
+
+- `freeAgents`, `league`, `players`, `transactions`, `tradeBait`
+- Auth-gated: `pendingWaivers`, `pendingTrades`
+
 ## Security notes
 
 - No browser password storage is used.
@@ -49,7 +70,16 @@ The proxy always sends `User-Agent: PlugGrokBot` and caches shared live scoring 
 - The login route performs the upstream MFL credential exchange server-side and stores only the returned `MFL_USER_ID` session cookie.
 - Server-side API routes can read that cookie through `cookies()` without exposing credentials to the browser.
 - The lineup import route validates the authenticated franchise and verifies the saved MFL starters before reporting success.
+- Waiver/trade submit routes refuse unconfirmed requests and do not write to MFL yet.
 - Do not add real secrets to the repo.
+
+## Phone smoke checklist
+
+1. Sign in from the header / landing auth control.
+2. Bottom tabs: Scores → Lineup → Roster → Standings still load.
+3. More → Notifications: alerts appear; mark read; optional “Draft opt-in” for Web Push preference.
+4. More → Waivers: FAAB rules + balances, searchable free agents, draft claim → confirm → expect 501 gated message.
+5. More → Trades: recent trades, draft offer from your roster → confirm → expect 501 gated message.
 
 ## Validation
 
