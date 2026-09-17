@@ -13,8 +13,9 @@ test('primary navigation keeps roster and standings visible while waivers and tr
   ]);
 });
 
-test('More exposes All Rosters without changing the five primary tabs', () => {
-  assert.deepEqual(moreLinks[0], { href: '/all-rosters', label: 'All Rosters' });
+test('More exposes Notifications and All Rosters without changing the five primary tabs', () => {
+  assert.deepEqual(moreLinks[0], { href: '/notifications', label: 'Notifications' });
+  assert.deepEqual(moreLinks[1], { href: '/all-rosters', label: 'All Rosters' });
   assert.equal(primaryTabs.length, 5);
 });
 

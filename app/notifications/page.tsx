@@ -1,6 +1,7 @@
 import { NotificationsCenter } from '@/components/notifications-center';
 import { getMflSessionCookieValue } from '@/lib/mfl-session';
 import { loadNotificationsPageState } from '@/lib/mfl-notifications';
+import { PushSubscribe } from '@/components/push-subscribe';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -19,6 +20,10 @@ export default async function NotificationsPage() {
       </div>
 
       <NotificationsCenter state={state} />
+
+      <section className="panel section stack">
+        <PushSubscribe />
+      </section>
     </main>
   );
 }

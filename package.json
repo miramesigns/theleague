@@ -8,18 +8,20 @@
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
-    "test": "node --test --experimental-strip-types tests/access-control.test.ts tests/navigation.test.ts tests/mfl-login.test.ts tests/mfl-scores.test.ts tests/mfl-lineup.test.ts tests/mfl-roster.test.ts tests/mfl-standings.test.ts tests/all-rosters.test.ts tests/auto-refresh.test.ts tests/player-detail.test.ts tests/mfl-waivers.test.ts tests/mfl-trades.test.ts tests/mfl-notifications.test.ts tests/notifications-store.test.ts"
+    "test": "node --test --experimental-strip-types tests/access-control.test.ts tests/navigation.test.ts tests/mfl-login.test.ts tests/mfl-scores.test.ts tests/mfl-lineup.test.ts tests/mfl-roster.test.ts tests/mfl-standings.test.ts tests/all-rosters.test.ts tests/auto-refresh.test.ts tests/player-detail.test.ts tests/mfl-waivers.test.ts tests/mfl-trades.test.ts tests/mfl-notifications.test.ts tests/notifications-store.test.ts tests/push.test.ts"
   },
   "dependencies": {
     "next": "latest",
     "react": "latest",
     "react-dom": "latest",
-    "server-only": "latest"
+    "server-only": "latest",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "@types/web-push": "^3.6.4",
     "eslint": "latest",
     "eslint-config-next": "latest",
     "typescript": "latest"
