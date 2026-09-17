@@ -11,11 +11,13 @@ export function TradeCard({ trade }: { trade: TradeRow }) {
       <div className="trade-parties">
         <div className="trade-side trade-side-gives">
           <div className="trade-franchise">{trade.franchiseName}</div>
+          <div className="trade-direction">Gives</div>
           <div className="trade-assets">{formatMflAssetLabels(trade.offered)}</div>
         </div>
         <div className="trade-arrow" aria-hidden="true">→</div>
         <div className="trade-side trade-side-receives">
           <div className="trade-franchise">{trade.partnerName}</div>
+          <div className="trade-direction">Gets</div>
           <div className="trade-assets">{formatMflAssetLabels(trade.requested)}</div>
         </div>
       </div>
@@ -35,11 +37,13 @@ export function CompletedTradeCard({ trade }: { trade: TradeRow }) {
       <div className="trade-parties">
         <div className="trade-side trade-side-gives">
           <div className="trade-franchise">{trade.franchiseName}</div>
+          <div className="trade-direction">Gives</div>
           <div className="trade-assets">{formatMflAssetLabels(trade.offered)}</div>
         </div>
         <div className="trade-arrow" aria-hidden="true">→</div>
         <div className="trade-side trade-side-receives">
           <div className="trade-franchise">{trade.partnerName}</div>
+          <div className="trade-direction">Gets</div>
           <div className="trade-assets">{formatMflAssetLabels(trade.requested)}</div>
         </div>
       </div>

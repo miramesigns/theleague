@@ -88,6 +88,12 @@ function integerValue(value: unknown): number | null {
   return parsed !== null && Number.isInteger(parsed) ? parsed : null;
 }
 
+function normalizeFranchiseId(value: unknown): string {
+  const id = text(value);
+  if (!id) return '';
+  return id.padStart(4, '0');
+}
+
 function mflErrorMessage(payload: unknown): string | null {
   return text(record(payload)?.error) || null;
 }
@@ -167,8 +173,8 @@ export function parsePendingTrades(
   const entries = records(pendingRoot?.pendingTrade ?? pendingRoot?.trade ?? pendingRoot?.transaction);
 
   return entries.map((entry, index) => {
-    const franchiseId = text(entry.franchise ?? entry.franchise1 ?? entry.will_give_up_franchise);
-    const partnerId = text(entry.franchise2 ?? entry.partner ?? entry.will_receive_franchise);
+    const franchiseId = normalizeFranchiseId(entry.franchise ?? entry.franchise1 ?? entry.will_give_up_franchise);
+    const partnerId = normalizeFranchiseId(entry.franchise2 ?? entry.partner ?? entry.will_receive_franchise);
     const offered = parseMflAssetList(
       text(entry.franchise1_gave_up ?? entry.will_give_up ?? entry.offered ?? entry.gives),
       players,

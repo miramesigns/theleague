@@ -54,5 +54,5 @@ export function parseMflAssetList(value: string | null | undefined, playerNames:
 
 export function formatMflAssetLabels(assets: MflAsset[]): string {
   if (assets.length === 0) return '—';
-  return assets.map((asset) => asset.label).join(', ');
+  return assets.map((asset) => asset.label).join(' • ');
 }
