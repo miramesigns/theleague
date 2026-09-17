@@ -21,10 +21,6 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
 
-  const toggleOffer = (playerId: string) => {
-    setOffering((current) => (current.includes(playerId) ? current.filter((id) => id !== playerId) : [...current, playerId]));
-  };
-
   const submitProposal = async () => {
     setBusy(true);
     setNotice('');
@@ -82,15 +78,7 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
         </section>
       )}
 
-      <section className="panel section">
-        <h2 className="eyebrow">Recent trades</h2>
-        <div className="trade-list">
-          {state.recent.slice(0, 20).map((trade) => (
-            <CompletedTradeCard key={trade.id} trade={trade} />
-          ))}
-          {state.recent.length === 0 ? <p className="muted small">No completed trades found.</p> : null}
-        </div>
-      </section>
+      <RecentTradesSection recent={state.recent} />
 
       {state.tradeBait.length > 0 ? (
         <section className="panel section">
@@ -120,22 +108,51 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
 
           <div>
             <div className="small muted" style={{ marginBottom: 8 }}>You offer</div>
-            <div className="stack trade-asset-list">
-              {state.myRosterAssets.map((asset) => {
-                const selected = offering.includes(asset.id);
-                return (
-                  <button
-                    key={asset.id}
-                    type="button"
-                    className={`button ghost${selected ? ' active-filter' : ''}`}
-                    onClick={() => toggleOffer(asset.id)}
-                  >
-                    {selected ? '✓ ' : ''}{asset.label}
-                  </button>
-                );
-              })}
-              {state.myRosterAssets.length === 0 ? <p className="muted small">Sign in with a roster to pick assets.</p> : null}
-            </div>
+            {state.myRosterAssets.length === 0 ? (
+              <p className="muted small">Sign in with a roster to pick assets.</p>
+            ) : (
+              <div className="trade-asset-picker">
+                <select
+                  className="field"
+                  value=""
+                  onChange={(event) => {
+                    const id = event.target.value;
+                    if (id && !offering.includes(id)) {
+                      setOffering((current) => [...current, id]);
+                    }
+                    event.target.value = '';
+                  }}
+                >
+                  <option value="">Select a player…</option>
+                  {state.myRosterAssets
+                    .filter((asset) => !offering.includes(asset.id))
+                    .map((asset) => (
+                      <option key={asset.id} value={asset.id}>{asset.label}</option>
+                    ))}
+                </select>
+                {offering.length > 0 ? (
+                  <div className="trade-selected-assets">
+                    {offering.map((id) => {
+                      const asset = state.myRosterAssets.find((a) => a.id === id);
+                      if (!asset) return null;
+                      return (
+                        <span key={id} className="trade-asset-pill">
+                          {asset.label}
+                          <button
+                            type="button"
+                            className="trade-asset-remove"
+                            onClick={() => setOffering((current) => current.filter((item) => item !== id))}
+                            aria-label={`Remove ${asset.label}`}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            )}
           </div>
 
           <label className="field-label">
@@ -177,5 +194,32 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
         onConfirm={submitProposal}
       />
     </div>
+  );
+}
+
+function RecentTradesSection({ recent }: { recent: TradesPageState['recent'] }) {
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? recent : recent.slice(0, 3);
+  const hasMore = recent.length > 3;
+
+  return (
+    <section className="panel section">
+      <h2 className="eyebrow">Recent trades</h2>
+      <div className="trade-list">
+        {visible.map((trade) => (
+          <CompletedTradeCard key={trade.id} trade={trade} />
+        ))}
+        {recent.length === 0 ? <p className="muted small">No completed trades found.</p> : null}
+      </div>
+      {hasMore ? (
+        <button
+          type="button"
+          className="button ghost trade-show-more"
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? 'Show less' : `Show all ${recent.length} trades`}
+        </button>
+      ) : null}
+    </section>
   );
 }

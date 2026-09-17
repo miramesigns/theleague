@@ -1553,6 +1553,49 @@ textarea {
   }
 }
 
+.trade-show-more {
+  margin-top: 10px;
+  width: 100%;
+  justify-content: center;
+}
+
+.trade-asset-picker {
+  display: grid;
+  gap: 10px;
+}
+
+.trade-selected-assets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.trade-asset-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 6px 12px;
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  background: rgba(8, 17, 31, 0.72);
+  border-radius: 999px;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.trade-asset-remove {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+}
+
+.trade-asset-remove:hover {
+  color: var(--danger);
+}
+
 .pull-indicator {
   position: fixed;
   top: 0;
