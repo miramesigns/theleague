@@ -2,8 +2,82 @@
 
 import { formatMflAssetLabels } from '@/lib/mfl-assets';
 import type { TradeRow } from '@/lib/mfl-trades';
+import {
+  FANTASYCALC_TRADE_CALCULATOR_URL,
+  formatDelta,
+  formatValueNumber,
+  KTC_TRADE_CALCULATOR_URL,
+  type TradeValueRead,
+} from '@/lib/trade-value-help';
 
-export function TradeCard({ trade }: { trade: TradeRow }) {
+function TradeValueHelp({
+  valueRead,
+  playerNames,
+}: {
+  valueRead: TradeValueRead;
+  playerNames: string[];
+}) {
+  const giveLabel = valueRead.perspective === 'you' ? 'You give' : 'Giver';
+  const getLabel = valueRead.perspective === 'you' ? 'You get' : 'Receiver';
+  const missNote = [...valueRead.give.misses, ...valueRead.get.misses];
+
+  return (
+    <div className="trade-value-help">
+      <div className="trade-value-row">
+        <span className="trade-value-label">{valueRead.label}</span>
+        <span className="trade-value-delta">{formatDelta(valueRead.delta)}</span>
+      </div>
+      <div className="trade-value-sides">
+        <span>
+          {giveLabel} {formatValueNumber(valueRead.give.total)}
+          {valueRead.give.misses.length > 0 ? '*' : ''}
+        </span>
+        <span aria-hidden="true">·</span>
+        <span>
+          {getLabel} {formatValueNumber(valueRead.get.total)}
+          {valueRead.get.misses.length > 0 ? '*' : ''}
+        </span>
+      </div>
+      {missNote.length > 0 ? (
+        <p className="trade-value-misses small muted">
+          Unmatched: {missNote.join(' • ')}
+        </p>
+      ) : null}
+      <div className="trade-value-links">
+        <a className="button ghost trade-ext-link" href={KTC_TRADE_CALCULATOR_URL} target="_blank" rel="noreferrer">
+          KeepTradeCut
+        </a>
+        <a className="button ghost trade-ext-link" href={FANTASYCALC_TRADE_CALCULATOR_URL} target="_blank" rel="noreferrer">
+          FantasyCalc
+        </a>
+      </div>
+      {playerNames.length > 0 ? (
+        <p className="trade-value-hint small muted">
+          Manual check: {playerNames.join(' / ')}
+        </p>
+      ) : null}
+      <p className="trade-value-settings small muted">{valueRead.settingsNote}</p>
+    </div>
+  );
+}
+
+function playerLabelsForManual(trade: TradeRow): string[] {
+  return [...trade.offered, ...trade.requested]
+    .filter((asset) => asset.kind === 'player')
+    .map((asset) => asset.label);
+}
+
+export function TradeCard({
+  trade,
+  onAccept,
+  onDecline,
+  onCounter,
+}: {
+  trade: TradeRow;
+  onAccept?: () => void;
+  onDecline?: () => void;
+  onCounter?: () => void;
+}) {
   const isPending = trade.status === 'pending';
 
   return (
@@ -27,6 +101,28 @@ export function TradeCard({ trade }: { trade: TradeRow }) {
         {trade.byCommish ? <span className="trade-commish">commissioner assisted</span> : null}
         {isPending ? <span className="trade-status-pending">Pending</span> : null}
       </div>
+      {trade.valueRead ? (
+        <TradeValueHelp valueRead={trade.valueRead} playerNames={playerLabelsForManual(trade)} />
+      ) : null}
+      {isPending && (onAccept || onDecline || onCounter) ? (
+        <div className="trade-actions">
+          {onAccept ? (
+            <button type="button" className="button primary trade-action-btn" onClick={onAccept}>
+              Accept
+            </button>
+          ) : null}
+          {onDecline ? (
+            <button type="button" className="button ghost trade-action-btn" onClick={onDecline}>
+              Decline
+            </button>
+          ) : null}
+          {onCounter ? (
+            <button type="button" className="button ghost trade-action-btn" onClick={onCounter}>
+              Counter
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </article>
   );
 }

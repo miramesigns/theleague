@@ -1536,6 +1536,70 @@ textarea {
   letter-spacing: 0.04em;
 }
 
+.trade-value-help {
+  display: grid;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.trade-value-help-draft {
+  margin-top: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(7, 13, 24, 0.45);
+}
+
+.trade-value-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.trade-value-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.trade-value-delta {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.trade-value-sides {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.trade-value-misses,
+.trade-value-hint,
+.trade-value-settings {
+  margin: 0;
+  line-height: 1.35;
+}
+
+.trade-value-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.trade-ext-link {
+  text-decoration: none;
+  font-size: 0.75rem;
+  padding: 6px 10px;
+}
+
 @media (max-width: 600px) {
   .trade-parties {
     grid-template-columns: 1fr;
@@ -1594,6 +1658,32 @@ textarea {
 
 .trade-asset-remove:hover {
   color: var(--danger);
+}
+
+.trade-asset-search-results {
+  display: grid;
+  gap: 6px;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.trade-asset-option {
+  justify-content: flex-start;
+  text-align: left;
+  width: 100%;
+}
+
+.trade-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.trade-action-btn {
+  flex: 1 1 auto;
+  min-width: 88px;
+  justify-content: center;
 }
 
 .pull-indicator {

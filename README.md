@@ -11,6 +11,7 @@ A phone-first Next.js App Router companion for a MyFantasyLeague league.
 - Server-side lineup import route with roster validation and post-submit MFL verification.
 - Server-side login route architecture that keeps only an `MFL_USER_ID` httpOnly session cookie.
 - Real `Waivers` board (free agents + FAAB rules + recent claims) and `Trades` board (history/pending/bait + draft offer UI).
+- Pending trades show a compact FantasyCalc dynasty value read (cached ≤1h) plus outbound KeepTradeCut / FantasyCalc calculator links. No accept/decline/submit.
 - In-app `Notifications` center derived from MFL transactions / live scores, with optional Web Push opt-in drafted locally (no paid vendor).
 - `More`, `Roster`, `Standings`, and `All Rosters` pages.
 - Manifest and SVG icons for PWA plumbing.
@@ -79,7 +80,8 @@ Verified live export types used in this slice:
 2. Bottom tabs: Scores → Lineup → Roster → Standings still load.
 3. More → Notifications: alerts appear; mark read; optional “Draft opt-in” for Web Push preference.
 4. More → Waivers: FAAB rules + balances, searchable free agents, draft claim → confirm → expect 501 gated message.
-5. More → Trades: recent trades, draft offer from your roster → confirm → expect 501 gated message.
+5. More → Trades: pending offers show FantasyCalc side totals + KTC/FC calculator links; draft offer from your roster → confirm → expect 501 gated message.
+   - Smoke example: London (15751) vs Tucker Kraft (16222) + Vele (16788) should read roughly “favors them” on FantasyCalc 1QB dynasty values.
 
 ## Validation
 
