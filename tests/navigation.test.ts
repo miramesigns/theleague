@@ -17,3 +17,12 @@ test('More exposes All Rosters without changing the five primary tabs', () => {
   assert.deepEqual(moreLinks[0], { href: '/all-rosters', label: 'All Rosters' });
   assert.equal(primaryTabs.length, 5);
 });
+
+test('More includes notifications alongside waivers and trades', () => {
+  assert.deepEqual(moreLinks.map((link) => link.href), [
+    '/all-rosters',
+    '/notifications',
+    '/waivers',
+    '/trades',
+  ]);
+});
