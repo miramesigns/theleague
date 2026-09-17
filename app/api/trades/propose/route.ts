@@ -1,69 +1,111 @@
 import { NextResponse } from 'next/server.js';
 
 import { getMflSessionCookieValue } from '@/lib/mfl-session';
+import {
+  importAmendedTradeProposal,
+  importTradeProposal,
+  validateTradeProposeInput,
+} from '@/lib/mfl-trade-writes';
 
 export const dynamic = 'force-dynamic';
 
-type ProposePayload = {
-  confirmed?: boolean;
-  partnerFranchiseId?: string;
-  offeringPlayerIds?: string[];
-  requestingPlayerIds?: string[];
-  expiresDays?: number;
-  comments?: string;
-};
+function deriveExpectedOrigin(request: Request): string | null {
+  const headers = request.headers;
+  const requestUrl = new URL(request.url);
+  const host = headers.get('x-forwarded-host') || headers.get('host') || requestUrl.host;
+  if (!host) return null;
+
+  const proto = headers.get('x-forwarded-proto') || requestUrl.protocol.replace(':', '') || 'https';
+  return `${proto}://${host}`;
+}
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-function readIdList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((id): id is string => typeof id === 'string' && Boolean(id.trim())).map((id) => id.trim());
-}
-
 export async function POST(request: Request) {
-  const sessionCookieValue = await getMflSessionCookieValue();
-  if (!sessionCookieValue) {
-    return NextResponse.json({ ok: false, message: 'Login required before a trade can be queued.' }, { status: 401 });
+  const expectedOrigin = deriveExpectedOrigin(request);
+  const origin = request.headers.get('origin');
+  if (!expectedOrigin || !origin || origin !== expectedOrigin) {
+    return NextResponse.json({ ok: false, message: 'Request origin is not allowed.' }, { status: 403 });
   }
 
-  const payload = (await request.json().catch(() => null)) as ProposePayload | null;
+  const sessionCookieValue = await getMflSessionCookieValue();
+  if (!sessionCookieValue) {
+    return NextResponse.json({ ok: false, message: 'Login required before a trade can be submitted.' }, { status: 401 });
+  }
+
+  const payload = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!isPlainRecord(payload)) {
     return NextResponse.json({ ok: false, message: 'Invalid request body.' }, { status: 400 });
   }
 
-  if (!payload.confirmed) {
+  if (payload.confirmed !== true) {
     return NextResponse.json({ ok: false, message: 'Explicit confirmation required.' }, { status: 400 });
   }
 
-  const partnerFranchiseId = typeof payload.partnerFranchiseId === 'string' ? payload.partnerFranchiseId.trim() : '';
-  if (!/^\d{4}$/.test(partnerFranchiseId)) {
-    return NextResponse.json({ ok: false, message: 'A partner franchise is required.' }, { status: 400 });
+  const validated = validateTradeProposeInput({
+    partnerFranchiseId: payload.partnerFranchiseId,
+    offeringPlayerIds: payload.offeringPlayerIds,
+    requestingPlayerIds: payload.requestingPlayerIds,
+    expiresDays: payload.expiresDays,
+    comments: payload.comments,
+    revokeTradeId: payload.revokeTradeId,
+  });
+
+  if (!validated.ok) {
+    return NextResponse.json({ ok: false, message: validated.message }, { status: 400 });
   }
 
-  const offeringPlayerIds = readIdList(payload.offeringPlayerIds);
-  const requestingPlayerIds = readIdList(payload.requestingPlayerIds);
-  if (offeringPlayerIds.length === 0 && requestingPlayerIds.length === 0) {
-    return NextResponse.json({ ok: false, message: 'Add at least one asset on either side of the trade.' }, { status: 400 });
-  }
+  const { value } = validated;
 
-  const expiresDays = typeof payload.expiresDays === 'number' && Number.isInteger(payload.expiresDays) && payload.expiresDays > 0
-    ? payload.expiresDays
-    : 7;
+  try {
+    const result = value.revokeTradeId
+      ? await importAmendedTradeProposal({
+          sessionCookieValue,
+          revokeTradeId: value.revokeTradeId,
+          partnerFranchiseId: value.partnerFranchiseId,
+          willGiveUpIds: value.willGiveUpIds,
+          willReceiveIds: value.willReceiveIds,
+          comments: value.comments,
+          expiresDays: value.expiresDays,
+        })
+      : await importTradeProposal({
+          sessionCookieValue,
+          partnerFranchiseId: value.partnerFranchiseId,
+          willGiveUpIds: value.willGiveUpIds,
+          willReceiveIds: value.willReceiveIds,
+          comments: value.comments,
+          expiresDays: value.expiresDays,
+        });
 
-  return NextResponse.json(
-    {
-      ok: false,
-      message: 'Safe TODO stub: live MFL trade submit is not enabled yet. Draft was accepted locally and still requires ask-before-send confirmation before any future write.',
-      draft: {
-        partnerFranchiseId,
-        offeringPlayerIds,
-        requestingPlayerIds,
-        expiresDays,
-        comments: typeof payload.comments === 'string' ? payload.comments.slice(0, 280) : '',
+    if (!result.ok) {
+      return NextResponse.json(
+        {
+          ok: false,
+          message: result.message,
+          revokedTradeId: result.revokedTradeId ?? null,
+        },
+        { status: result.status },
+      );
+    }
+
+    return NextResponse.json(
+      {
+        ok: true,
+        message: result.message,
+        revokedTradeId: result.revokedTradeId ?? null,
+        draft: {
+          partnerFranchiseId: value.partnerFranchiseId,
+          offeringPlayerIds: value.willGiveUpIds,
+          requestingPlayerIds: value.willReceiveIds,
+          expiresDays: value.expiresDays,
+          comments: value.comments ?? '',
+        },
       },
-    },
-    { status: 501 },
-  );
+      { status: 200 },
+    );
+  } catch {
+    return NextResponse.json({ ok: false, message: 'Trade could not be submitted to MFL.' }, { status: 503 });
+  }
 }

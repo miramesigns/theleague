@@ -2,8 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  amendDraftFromPendingTrade,
   counterDraftFromPendingTrade,
   franchiseDisplayLabel,
+  isIncomingPendingTrade,
+  isOutgoingPendingTrade,
   parseCompletedTrades,
   parsePendingTrades,
   parseTradeBait,
@@ -104,6 +107,7 @@ test('parsePendingTrades maps live MFL offeringteam/offeredto keys to giver/rece
   assert.equal(pending[0].franchiseName, '🏆 🏆 🏆 🏆 🏆 🏆 🏆');
   assert.equal(pending[0].partnerName, 'The Ashy Elbows');
   assert.equal(pending[0].id, 'pending-1587');
+  assert.equal(pending[0].mflTradeId, '1587');
   assert.equal(pending[0].offered.map((a) => a.label).join(' • '), 'Tucker, Tre • Vele, Devaughn');
   assert.equal(pending[0].requested[0].label, 'London, Drake');
   assert.doesNotMatch(pending[0].franchiseName, /Unknown/i);
@@ -147,6 +151,7 @@ test('parsePendingTrades reads franchise ids from @attributes wrappers', () => {
   assert.equal(pending[0].franchiseName, '🏆 🏆 🏆 🏆 🏆 🏆 🏆');
   assert.equal(pending[0].partnerName, 'The Ashy Elbows');
   assert.equal(pending[0].id, 'pending-99');
+  assert.equal(pending[0].mflTradeId, '99');
   assert.equal(pending[0].offered.map((a) => a.label).join(' • '), 'Tucker, Tre • Vele, Devaughn');
   assert.equal(pending[0].requested[0].label, 'London, Drake');
 });
@@ -255,6 +260,7 @@ test('parseTradesPageState resolves pending offeringteam names via league franch
   assert.equal(state.pending[0].franchiseName, '3-Peat');
   assert.equal(state.pending[0].partnerName, 'The Ashy Elbows');
   assert.equal(state.pending[0].id, 'pending-1587');
+  assert.equal(state.pending[0].mflTradeId, '1587');
   assert.equal(state.franchises.find((f) => f.id === '0005')?.name, '3-Peat');
   assert.doesNotMatch(state.pending[0].franchiseName, /Unknown/i);
   assert.doesNotMatch(state.pending[0].franchiseName, /🏆/);
@@ -264,6 +270,7 @@ test('counterDraftFromPendingTrade swaps assets for the primary franchise', () =
   const draft = counterDraftFromPendingTrade(
     {
       id: 'pending-1',
+      mflTradeId: '1',
       timestamp: 1,
       timeLabel: '',
       expiresAt: null,
@@ -283,6 +290,56 @@ test('counterDraftFromPendingTrade swaps assets for the primary franchise', () =
   assert.equal(draft.partnerId, '0005');
   assert.deepEqual(draft.offeringPlayerIds, ['16287']);
   assert.deepEqual(draft.requestingPlayerIds, ['15751']);
+  assert.equal(draft.revokeTradeId, null);
+});
+
+test('amendDraftFromPendingTrade keeps same assets and revoke trade id', () => {
+  const draft = amendDraftFromPendingTrade({
+    id: 'pending-1587',
+    mflTradeId: '1587',
+    timestamp: 1,
+    timeLabel: '',
+    expiresAt: Math.floor(Date.now() / 1000) + 3 * 24 * 60 * 60,
+    expiresLabel: null,
+    franchiseId: '0005',
+    franchiseName: 'Me',
+    partnerId: '0004',
+    partnerName: 'Them',
+    offered: [{ kind: 'player', id: '16287', label: 'Tucker, Tre' }],
+    requested: [{ kind: 'player', id: '15751', label: 'London, Drake' }],
+    summary: '',
+    status: 'pending',
+    byCommish: false,
+  });
+  assert.equal(draft.partnerId, '0004');
+  assert.deepEqual(draft.offeringPlayerIds, ['16287']);
+  assert.deepEqual(draft.requestingPlayerIds, ['15751']);
+  assert.equal(draft.revokeTradeId, '1587');
+  assert.ok(draft.expiresDays !== null && draft.expiresDays >= 1);
+});
+
+test('incoming vs outgoing pending trade helpers', () => {
+  const trade = {
+    id: 'pending-1',
+    mflTradeId: '1',
+    timestamp: 1,
+    timeLabel: '',
+    expiresAt: null,
+    expiresLabel: null,
+    franchiseId: '0005',
+    franchiseName: 'Them',
+    partnerId: '0004',
+    partnerName: 'Me',
+    offered: [],
+    requested: [],
+    summary: '',
+    status: 'pending' as const,
+    byCommish: false,
+  };
+  assert.equal(isIncomingPendingTrade(trade, '0004'), true);
+  assert.equal(isOutgoingPendingTrade(trade, '0004'), false);
+  assert.equal(isOutgoingPendingTrade(trade, '0005'), true);
+  assert.equal(isIncomingPendingTrade(trade, '0005'), false);
 });
 
 test('parseTradeBait handles empty bait boards', () => {

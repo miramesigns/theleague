@@ -1,11 +1,19 @@
 "use client";
 
+import { useRouter } from 'next/navigation';
 import { useMemo, useRef, useState } from 'react';
 
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { CompletedTradeCard, TradeCard } from '@/components/trade-card';
 import type { MflAsset } from '@/lib/mfl-assets';
-import { counterDraftFromPendingTrade, type TradeRow, type TradesPageState } from '@/lib/mfl-trades';
+import {
+  amendDraftFromPendingTrade,
+  counterDraftFromPendingTrade,
+  isIncomingPendingTrade,
+  isOutgoingPendingTrade,
+  type TradeRow,
+  type TradesPageState,
+} from '@/lib/mfl-trades';
 import {
   FANTASYCALC_TRADE_CALCULATOR_URL,
   favorLabel,
@@ -14,7 +22,7 @@ import {
   KTC_TRADE_CALCULATOR_URL,
 } from '@/lib/trade-value-help';
 
-type PendingAction = 'accept' | 'decline' | null;
+type PendingAction = 'accept' | 'reject' | 'revoke' | null;
 
 function assetLabel(assets: MflAsset[], id: string): string {
   return assets.find((asset) => asset.id === id)?.label || `Player ${id}`;
@@ -137,6 +145,7 @@ function PlayerAssetPicker({
 }
 
 export function TradesBoard({ state }: { state: TradesPageState }) {
+  const router = useRouter();
   const partners = useMemo(
     () => state.franchises.filter((franchise) => !franchise.isPrimary),
     [state.franchises],
@@ -147,6 +156,7 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
   const [requesting, setRequesting] = useState<string[]>([]);
   const [expiresDays, setExpiresDays] = useState(String(state.defaultExpirationDays));
   const [comments, setComments] = useState('');
+  const [revokeTradeId, setRevokeTradeId] = useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
@@ -155,6 +165,7 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
   const draftRef = useRef<HTMLElement | null>(null);
 
   const partnerName = partners.find((franchise) => franchise.id === partnerId)?.name || 'Partner';
+  const isAmend = Boolean(revokeTradeId);
   const requestPool = useMemo(() => {
     const partnerRoster = state.rosterAssetsByFranchiseId[partnerId] ?? [];
     const seen = new Set<string>();
@@ -211,6 +222,8 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
     };
   }, [offering, requestPool, requesting, state.myRosterAssets, state.valueCatalog]);
 
+  const clearAmendMode = () => setRevokeTradeId(null);
+
   const submitProposal = async () => {
     setBusy(true);
     setNotice('');
@@ -225,18 +238,22 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
           requestingPlayerIds: requesting,
           expiresDays: Number(expiresDays) || state.defaultExpirationDays,
           comments,
+          revokeTradeId: revokeTradeId || undefined,
         }),
       });
-      const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-      if (response.status === 501) {
-        setNotice(payload?.message || 'Trade draft saved. Live MFL submit stays gated.');
-      } else if (!response.ok) {
-        setNotice(payload?.message || 'Trade could not be queued.');
+      const payload = (await response.json().catch(() => null)) as { ok?: boolean; message?: string } | null;
+      if (!response.ok || !payload?.ok) {
+        setNotice(payload?.message || 'Trade could not be submitted.');
       } else {
-        setNotice(payload?.message || 'Trade submitted.');
+        setNotice(payload?.message || 'Trade submitted to MFL.');
+        setOffering([]);
+        setRequesting([]);
+        setComments('');
+        clearAmendMode();
+        router.refresh();
       }
     } catch {
-      setNotice('Trade could not be queued.');
+      setNotice('Trade could not be submitted.');
     } finally {
       setBusy(false);
       setReviewOpen(false);
@@ -245,6 +262,7 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
 
   const submitPendingResponse = async () => {
     if (!pendingTrade || !pendingAction) return;
+    const tradeId = pendingTrade.mflTradeId || pendingTrade.id;
     setBusy(true);
     setNotice('');
     try {
@@ -254,21 +272,18 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
         body: JSON.stringify({
           confirmed: true,
           action: pendingAction,
-          tradeId: pendingTrade.id,
-          partnerFranchiseId: pendingTrade.partnerId,
-          franchiseId: pendingTrade.franchiseId,
+          tradeId,
         }),
       });
-      const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-      if (response.status === 501) {
-        setNotice(payload?.message || `Trade ${pendingAction} queued locally. Live MFL write stays gated.`);
-      } else if (!response.ok) {
-        setNotice(payload?.message || `Trade could not be ${pendingAction}ed.`);
+      const payload = (await response.json().catch(() => null)) as { ok?: boolean; message?: string } | null;
+      if (!response.ok || !payload?.ok) {
+        setNotice(payload?.message || `Trade could not be ${pendingAction === 'reject' ? 'declined' : `${pendingAction}ed`}.`);
       } else {
-        setNotice(payload?.message || `Trade ${pendingAction}ed.`);
+        setNotice(payload?.message || `Trade ${pendingAction === 'reject' ? 'declined' : `${pendingAction}ed`}.`);
+        router.refresh();
       }
     } catch {
-      setNotice(`Trade could not be ${pendingAction}ed.`);
+      setNotice(`Trade could not be ${pendingAction === 'reject' ? 'declined' : `${pendingAction}ed`}.`);
     } finally {
       setBusy(false);
       setPendingAction(null);
@@ -281,11 +296,46 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
     setPartnerId(draft.partnerId || partners[0]?.id || '');
     setOffering(draft.offeringPlayerIds);
     setRequesting(draft.requestingPlayerIds);
-    setNotice('Counter started in Draft trade offer — edit then Review offer.');
+    clearAmendMode();
+    setNotice('Counter started in Draft trade offer — edit then confirm to send to MFL.');
     requestAnimationFrame(() => {
       draftRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   };
+
+  const startAmend = (trade: TradeRow) => {
+    const draft = amendDraftFromPendingTrade(trade);
+    setPartnerId(draft.partnerId || partners[0]?.id || '');
+    setOffering(draft.offeringPlayerIds);
+    setRequesting(draft.requestingPlayerIds);
+    if (draft.expiresDays) setExpiresDays(String(draft.expiresDays));
+    setRevokeTradeId(draft.revokeTradeId);
+    setNotice('Amend mode: edit assets, then confirm to revoke the old offer and resend.');
+    requestAnimationFrame(() => {
+      draftRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
+  const pendingResponseTitle =
+    pendingAction === 'accept'
+      ? 'Accept this trade?'
+      : pendingAction === 'revoke'
+        ? 'Cancel this offer?'
+        : 'Decline this trade?';
+
+  const pendingResponseMessage =
+    pendingAction === 'accept'
+      ? 'This will accept the pending trade on MFL.'
+      : pendingAction === 'revoke'
+        ? 'This will revoke your pending offer on MFL.'
+        : 'This will decline the pending trade on MFL.';
+
+  const pendingConfirmLabel =
+    pendingAction === 'accept'
+      ? 'Confirm accept'
+      : pendingAction === 'revoke'
+        ? 'Confirm cancel'
+        : 'Confirm decline';
 
   return (
     <div className="stack trades-board">
@@ -293,21 +343,42 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
         <section className="panel section">
           <h2 className="eyebrow">Pending offers</h2>
           <div className="trade-list">
-            {state.pending.map((trade) => (
-              <TradeCard
-                key={trade.id}
-                trade={trade}
-                onAccept={() => {
-                  setPendingTrade(trade);
-                  setPendingAction('accept');
-                }}
-                onDecline={() => {
-                  setPendingTrade(trade);
-                  setPendingAction('decline');
-                }}
-                onCounter={() => startCounter(trade)}
-              />
-            ))}
+            {state.pending.map((trade) => {
+              const outgoing = isOutgoingPendingTrade(trade, state.franchiseId);
+              const incoming = isIncomingPendingTrade(trade, state.franchiseId);
+              return (
+                <TradeCard
+                  key={trade.id}
+                  trade={trade}
+                  onAccept={
+                    incoming
+                      ? () => {
+                          setPendingTrade(trade);
+                          setPendingAction('accept');
+                        }
+                      : undefined
+                  }
+                  onDecline={
+                    incoming
+                      ? () => {
+                          setPendingTrade(trade);
+                          setPendingAction('reject');
+                        }
+                      : undefined
+                  }
+                  onCounter={incoming ? () => startCounter(trade) : undefined}
+                  onAmend={outgoing && trade.mflTradeId ? () => startAmend(trade) : undefined}
+                  onRevoke={
+                    outgoing && trade.mflTradeId
+                      ? () => {
+                          setPendingTrade(trade);
+                          setPendingAction('revoke');
+                        }
+                      : undefined
+                  }
+                />
+              );
+            })}
           </div>
         </section>
       ) : (
@@ -335,14 +406,26 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
       ) : null}
 
       <section className="panel section" id="draft-trade-offer" ref={draftRef}>
-        <h2 className="eyebrow">Draft trade offer</h2>
-        <p className="small muted">Compose locally. Live MFL submit requires confirmation and currently returns a safe 501 stub.</p>
+        <h2 className="eyebrow">{isAmend ? 'Amend & resend offer' : 'Draft trade offer'}</h2>
+        <p className="small muted">
+          {isAmend
+            ? 'Editing an outgoing offer. Confirming will revoke the old pending trade on MFL, then submit the new terms.'
+            : 'Compose an offer, then confirm to submit it live to MFL.'}
+        </p>
+        {isAmend ? (
+          <div className="actions" style={{ marginTop: 8 }}>
+            <button type="button" className="button ghost" onClick={clearAmendMode}>
+              Cancel amend
+            </button>
+          </div>
+        ) : null}
         <div className="stack" style={{ marginTop: 12 }}>
           <label className="field-label">
             Partner
             <select
               className="field"
               value={partnerId}
+              disabled={isAmend}
               onChange={(event) => {
                 const nextPartner = event.target.value;
                 setPartnerId(nextPartner);
@@ -430,7 +513,7 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
               onClick={() => setReviewOpen(true)}
               disabled={!partnerId || (offering.length === 0 && requesting.length === 0)}
             >
-              Review offer
+              {isAmend ? 'Review amend & resend' : 'Review offer'}
             </button>
           </div>
           {notice ? <p className="small muted" role="status">{notice}</p> : null}
@@ -440,9 +523,13 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
       <ConfirmDialog
         open={reviewOpen}
         busy={busy}
-        title="Confirm trade draft"
-        message={`Queue a draft offer to ${partnerName}? Live MFL write stays disabled until this stub is intentionally enabled.`}
-        confirmLabel="Confirm draft"
+        title={isAmend ? 'Confirm amend & resend' : 'Confirm trade offer'}
+        message={
+          isAmend
+            ? `Revoke the current pending offer and send updated terms to ${partnerName} on MFL?`
+            : `Send this offer to ${partnerName} on MFL?`
+        }
+        confirmLabel={isAmend ? 'Confirm resend' : 'Confirm send'}
         onCancel={() => setReviewOpen(false)}
         onConfirm={submitProposal}
       />
@@ -450,13 +537,9 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
       <ConfirmDialog
         open={Boolean(pendingAction && pendingTrade)}
         busy={busy}
-        title={pendingAction === 'accept' ? 'Accept this trade?' : 'Decline this trade?'}
-        message={
-          pendingAction === 'accept'
-            ? 'Confirm accept? Live MFL import stays gated and currently returns a safe 501 stub.'
-            : 'Confirm decline? Live MFL import stays gated and currently returns a safe 501 stub.'
-        }
-        confirmLabel={pendingAction === 'accept' ? 'Confirm accept' : 'Confirm decline'}
+        title={pendingResponseTitle}
+        message={pendingResponseMessage}
+        confirmLabel={pendingConfirmLabel}
         onCancel={() => {
           setPendingAction(null);
           setPendingTrade(null);
