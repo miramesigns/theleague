@@ -32,13 +32,23 @@ type NotificationStore = {
 
 const listeners = new Set<() => void>();
 
+/** Cached client snapshot — useSyncExternalStore requires referential stability when data is unchanged. */
+let cachedSnapshot: NotificationStore = {
+  readIds: [],
+  prefs: defaultPrefs,
+  pushStatus: 'Push stays draft/opt-in. No paid vendor.',
+};
+let cachedSignature = '';
+
 function emit() {
   for (const listener of listeners) listener();
 }
 
 function subscribe(listener: () => void) {
   listeners.add(listener);
-  return () => listeners.delete(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 function readJson<T>(key: string, fallback: T): T {
@@ -52,19 +62,37 @@ function readJson<T>(key: string, fallback: T): T {
   }
 }
 
-function getStoreSnapshot(): NotificationStore {
-  const storedReads = readJson<unknown>(READ_KEY, []);
-  const readIds = Array.isArray(storedReads) ? storedReads.filter((id): id is string => typeof id === 'string') : [];
-  const storedPrefs = readJson<Partial<Prefs> | null>(PREFS_KEY, null);
-  const prefs = storedPrefs ? { ...defaultPrefs, ...storedPrefs } : defaultPrefs;
-  const draft = typeof window === 'undefined' ? null : window.localStorage.getItem(PUSH_DRAFT_KEY);
+function normalizePrefs(value: unknown): Prefs {
+  if (!value || typeof value !== 'object') return defaultPrefs;
+  const incoming = value as Partial<Prefs>;
   return {
-    readIds,
-    prefs,
-    pushStatus: draft
-      ? 'Web Push preference drafted locally. Outbound delivery remains gated.'
-      : 'Push stays draft/opt-in. No paid vendor.',
+    scores: incoming.scores !== false,
+    lineup: incoming.lineup !== false,
+    waiver: incoming.waiver !== false,
+    trade: incoming.trade !== false,
+    league: incoming.league !== false,
   };
+}
+
+function getStoreSnapshot(): NotificationStore {
+  const storedReads = readJson<unknown>(READ_KEY, null);
+  const readIds = Array.isArray(storedReads)
+    ? storedReads.filter((id): id is string => typeof id === 'string').slice(-200)
+    : [];
+  const prefs = normalizePrefs(readJson<unknown>(PREFS_KEY, null));
+  const draft = window.localStorage.getItem(PUSH_DRAFT_KEY);
+  const pushStatus = draft
+    ? 'Web Push preference drafted locally. Outbound delivery remains gated.'
+    : 'Push stays draft/opt-in. No paid vendor.';
+
+  const signature = `${readIds.join('\0')}|${prefs.scores}|${prefs.lineup}|${prefs.waiver}|${prefs.trade}|${prefs.league}|${pushStatus}`;
+  if (signature === cachedSignature) {
+    return cachedSnapshot;
+  }
+
+  cachedSignature = signature;
+  cachedSnapshot = { readIds, prefs, pushStatus };
+  return cachedSnapshot;
 }
 
 const serverSnapshot: NotificationStore = {
@@ -116,8 +144,8 @@ export function NotificationsCenter({ state }: { state: NotificationsPageState }
   const unreadCount = visible.filter((entry) => !readIds.includes(entry.id)).length;
 
   const markRead = useCallback((id: string) => {
-    const next = readIds.includes(id) ? readIds : [...readIds, id];
-    writeReads(next);
+    if (readIds.includes(id)) return;
+    writeReads([...readIds, id]);
   }, [readIds]);
 
   const markAllRead = () => {
@@ -142,6 +170,7 @@ export function NotificationsCenter({ state }: { state: NotificationsPageState }
           denied: true,
           prefs,
         }));
+        cachedSignature = '';
         emit();
         return;
       }
