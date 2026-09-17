@@ -63,19 +63,66 @@ test('parsePendingTrades tolerates empty and error payloads', () => {
   assert.equal(pending[0].offered[0].label, 'A');
 });
 
+test('parsePendingTrades maps live MFL offeringteam/offeredto keys to giver/receiver names', () => {
+  // Captured 2026-09-17 from MFL pendingTrades for league 35743 (trade_id 1587).
+  const pending = parsePendingTrades(
+    {
+      pendingTrades: {
+        pendingTrade: {
+          timestamp: '1789614470',
+          expires: '1790218800',
+          will_give_up: '16287,16788,',
+          offeredto: '0004',
+          will_receive: '15751,',
+          comments: '',
+          offeringteam: '0005',
+          description:
+            '🏆 🏆 🏆 🏆 🏆 🏆 🏆  proposed a trade to The Ashy Elbows: … Tucker, Tre; Vele, Devaughn for London, Drake',
+          trade_id: '1587',
+        },
+      },
+    },
+    {
+      players: {
+        player: [
+          { id: '16287', name: 'Tucker, Tre' },
+          { id: '16788', name: 'Vele, Devaughn' },
+          { id: '15751', name: 'London, Drake' },
+        ],
+      },
+    },
+    new Map([
+      ['0004', 'The Ashy Elbows'],
+      ['0005', '🏆 🏆 🏆 🏆 🏆 🏆 🏆'],
+    ]),
+  );
+
+  assert.equal(pending.length, 1);
+  assert.equal(pending[0].franchiseId, '0005');
+  assert.equal(pending[0].partnerId, '0004');
+  assert.equal(pending[0].franchiseName, '🏆 🏆 🏆 🏆 🏆 🏆 🏆');
+  assert.equal(pending[0].partnerName, 'The Ashy Elbows');
+  assert.equal(pending[0].id, 'pending-1587');
+  assert.equal(pending[0].offered.map((a) => a.label).join(' • '), 'Tucker, Tre • Vele, Devaughn');
+  assert.equal(pending[0].requested[0].label, 'London, Drake');
+  assert.doesNotMatch(pending[0].franchiseName, /Unknown/i);
+  assert.doesNotMatch(pending[0].partnerName, /Unknown/i);
+});
+
 test('parsePendingTrades reads franchise ids from @attributes wrappers', () => {
   const pending = parsePendingTrades(
     {
       pendingTrades: {
         pendingTrade: [{
           '@attributes': {
-            franchise: '4',
-            franchise2: '5',
+            offeringteam: '5',
+            offeredto: '4',
             timestamp: '100',
             expires: '200',
+            trade_id: '99',
           },
-          franchise1_gave_up: '16287,16788,',
-          franchise2_gave_up: '15751,',
+          will_give_up: '16287,16788,',
+          will_receive: '15751,',
         }],
       },
     },
@@ -94,10 +141,11 @@ test('parsePendingTrades reads franchise ids from @attributes wrappers', () => {
     ]),
   );
 
-  assert.equal(pending[0].franchiseId, '0004');
-  assert.equal(pending[0].partnerId, '0005');
-  assert.equal(pending[0].franchiseName, 'The Ashy Elbows');
-  assert.equal(pending[0].partnerName, '🏆 🏆 🏆 🏆 🏆 🏆 🏆');
+  assert.equal(pending[0].franchiseId, '0005');
+  assert.equal(pending[0].partnerId, '0004');
+  assert.equal(pending[0].franchiseName, '🏆 🏆 🏆 🏆 🏆 🏆 🏆');
+  assert.equal(pending[0].partnerName, 'The Ashy Elbows');
+  assert.equal(pending[0].id, 'pending-99');
   assert.equal(pending[0].offered.map((a) => a.label).join(' • '), 'Tucker, Tre • Vele, Devaughn');
   assert.equal(pending[0].requested[0].label, 'London, Drake');
 });
@@ -119,6 +167,57 @@ test('parsePendingTrades never labels missing franchises as Franchise ?', () => 
   assert.equal(pending[0].franchiseName, 'Unknown franchise');
   assert.equal(pending[0].partnerName, 'Unknown franchise');
   assert.doesNotMatch(pending[0].franchiseName, /\?/);
+});
+
+test('parseTradesPageState resolves pending offeringteam names via league franchise map', () => {
+  const state = parseTradesPageState({
+    authenticated: true,
+    primaryFranchiseId: '0004',
+    league: {
+      league: {
+        defaultTradeExpirationDays: '7',
+        franchises: {
+          franchise: [
+            { id: '0004', name: 'The Ashy Elbows', abbrev: 'Elbows' },
+            { id: '0005', name: '🏆 🏆 🏆 🏆 🏆 🏆 🏆', abbrev: '3-Peat' },
+          ],
+        },
+      },
+    },
+    players: {
+      players: {
+        player: [
+          { id: '16287', name: 'Tucker, Tre' },
+          { id: '16788', name: 'Vele, Devaughn' },
+          { id: '15751', name: 'London, Drake' },
+        ],
+      },
+    },
+    transactions: { transactions: { transaction: [] } },
+    pendingTrades: {
+      pendingTrades: {
+        pendingTrade: {
+          timestamp: '1789614470',
+          expires: '1790218800',
+          will_give_up: '16287,16788,',
+          offeredto: '0004',
+          will_receive: '15751,',
+          offeringteam: '0005',
+          trade_id: '1587',
+        },
+      },
+    },
+    tradeBait: null,
+    roster: null,
+  });
+
+  assert.equal(state.ok, true);
+  assert.equal(state.pending.length, 1);
+  assert.equal(state.pending[0].franchiseId, '0005');
+  assert.equal(state.pending[0].partnerId, '0004');
+  assert.equal(state.pending[0].franchiseName, '🏆 🏆 🏆 🏆 🏆 🏆 🏆');
+  assert.equal(state.pending[0].partnerName, 'The Ashy Elbows');
+  assert.equal(state.pending[0].id, 'pending-1587');
 });
 
 test('counterDraftFromPendingTrade swaps assets for the primary franchise', () => {
