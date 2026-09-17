@@ -459,6 +459,50 @@ function parseSubmittedLineup(payload: unknown, franchiseId: string): { found: b
   return { found: false, starterIds: new Set() };
 }
 
+function starterSetsEqual(left: Set<string>, right: Set<string>): boolean {
+  if (left.size !== right.size) return false;
+  for (const id of left) {
+    if (!right.has(id)) return false;
+  }
+  return true;
+}
+
+function scheduleKickoffStarted(
+  schedule: Map<string, { kickoffUtc: number | null }>,
+  nowMs = Date.now(),
+): boolean {
+  for (const entry of schedule.values()) {
+    if (entry.kickoffUtc !== null && entry.kickoffUtc * 1000 <= nowMs) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * MFL often surfaces the prior week's starters before a lineup is actively submitted
+ * for the selected week (pre-kickoff carry-over). Treat identical pre-kickoff lineups
+ * as not submitted; do not clear or alter the starter ids themselves.
+ */
+export function resolveHasSubmittedLineup(args: {
+  starterIds: Set<string>;
+  previousStarterIds: Set<string> | null;
+  selectedWeek: number;
+  currentWeek: number | null;
+  kickoffStarted: boolean;
+}): boolean {
+  if (args.starterIds.size === 0) return false;
+  if (args.currentWeek !== null && args.selectedWeek < args.currentWeek) return true;
+  if (args.kickoffStarted) return true;
+  if (args.previousStarterIds === null) return true;
+  if (starterSetsEqual(args.starterIds, args.previousStarterIds)) return false;
+  return true;
+}
+
+export function formatLineupSubmissionCue(selectedWeek: number, hasSubmittedLineup: boolean): string {
+  return hasSubmittedLineup ? 'submitted' : `week ${selectedWeek} not submitted`;
+}
+
 function deriveStartRanks(
   topStarters: Map<string, number>,
   playersDirectory: Map<string, { name: string; position: string; team: string | null }>,
@@ -901,6 +945,37 @@ async function loadLineupPayloads(sessionCookieValue: string | null, selectedWee
   const submittedLineup = parseSubmittedLineup(weeklyResultsPayload, franchiseId);
   const selectedStarterIds = submittedLineup.starterIds;
 
+  const kickoffStarted = scheduleKickoffStarted(scheduleMap);
+  const previousWeek = [...schedule.weeks].filter((week) => week < selectedWeek).sort((left, right) => right - left)[0] ?? null;
+  let previousStarterIds: Set<string> | null = previousWeek === null ? null : new Set();
+
+  if (
+    previousWeek !== null
+    && selectedStarterIds.size > 0
+    && !(currentWeek !== null && selectedWeek < currentWeek)
+    && !kickoffStarted
+  ) {
+    const previousResultsResponse = await fetchMflExport(
+      'weeklyResults',
+      { W: String(previousWeek), JSON: '1' },
+      { sessionCookieValue, cache: 'no-store' },
+    );
+    if (previousResultsResponse.ok) {
+      const previousResultsPayload = await previousResultsResponse.json().catch(() => null);
+      previousStarterIds = parseSubmittedLineup(previousResultsPayload, franchiseId).starterIds;
+    } else {
+      previousStarterIds = null;
+    }
+  }
+
+  const hasSubmittedLineup = resolveHasSubmittedLineup({
+    starterIds: selectedStarterIds,
+    previousStarterIds,
+    selectedWeek,
+    currentWeek,
+    kickoffStarted,
+  });
+
   const rows = buildRows({
     rosterPlayers,
     playersDirectory,
@@ -928,7 +1003,7 @@ async function loadLineupPayloads(sessionCookieValue: string | null, selectedWee
     rules,
     rows,
     summary,
-    hasSubmittedLineup: submittedLineup.found,
+    hasSubmittedLineup,
     submittedAt: null,
     rosterPlayerIds: new Set([...rosterPlayers.keys()]),
     playersById: rows.reduce((map, row) => {
