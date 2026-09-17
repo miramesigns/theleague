@@ -21,8 +21,8 @@ test('More exposes Notifications and All Rosters without changing the five prima
 
 test('More includes notifications alongside waivers and trades', () => {
   assert.deepEqual(moreLinks.map((link) => link.href), [
-    '/all-rosters',
     '/notifications',
+    '/all-rosters',
     '/waivers',
     '/trades',
   ]);

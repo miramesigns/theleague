@@ -9,7 +9,6 @@ export const primaryTabs = [
 export const moreLinks = [
   { href: '/notifications', label: 'Notifications' },
   { href: '/all-rosters', label: 'All Rosters' },
-  { href: '/notifications', label: 'Notifications' },
   { href: '/waivers', label: 'Waivers' },
   { href: '/trades', label: 'Trades' },
 ] as const;
