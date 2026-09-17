@@ -1440,3 +1440,107 @@ textarea {
   height: 18px;
   accent-color: var(--accent-2);
 }
+
+.trade-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.trade-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  background: rgba(7, 13, 24, 0.55);
+  border-radius: 18px;
+}
+
+.trade-card-pending {
+  border-color: rgba(34, 211, 238, 0.35);
+  background: rgba(8, 17, 31, 0.72);
+}
+
+.trade-parties {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+.trade-side {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.trade-side-gives {
+  text-align: left;
+}
+
+.trade-side-receives {
+  text-align: right;
+}
+
+.trade-franchise {
+  font-weight: 700;
+  font-size: 0.92rem;
+  line-height: 1.2;
+  color: #fff;
+}
+
+.trade-assets {
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.trade-arrow {
+  color: var(--accent);
+  font-size: 1.2rem;
+  font-weight: 800;
+  opacity: 0.7;
+}
+
+.trade-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  font-size: 0.75rem;
+  color: var(--muted);
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.trade-commish {
+  color: #fde68a;
+}
+
+.trade-status-pending {
+  color: var(--accent);
+  font-weight: 700;
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+@media (max-width: 600px) {
+  .trade-parties {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .trade-arrow {
+    display: none;
+  }
+
+  .trade-side-receives {
+    text-align: left;
+    padding-top: 8px;
+    border-top: 1px solid var(--line);
+  }
+}

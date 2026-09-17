@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 
 import { ConfirmDialog } from '@/components/confirm-dialog';
-import { formatMflAssetLabels } from '@/lib/mfl-assets';
+import { CompletedTradeCard, TradeCard } from '@/components/trade-card';
 import type { TradesPageState } from '@/lib/mfl-trades';
 
 export function TradesBoard({ state }: { state: TradesPageState }) {
@@ -67,15 +67,9 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
       {state.pending.length > 0 ? (
         <section className="panel section">
           <h2 className="eyebrow">Pending offers</h2>
-          <div className="stack" style={{ marginTop: 10 }}>
+          <div className="trade-list">
             {state.pending.map((trade) => (
-              <article key={trade.id} className="activity-row">
-                <strong>{trade.summary}</strong>
-                <div className="small muted">
-                  {trade.timeLabel}
-                  {trade.expiresLabel ? ` · expires ${trade.expiresLabel}` : ''}
-                </div>
-              </article>
+              <TradeCard key={trade.id} trade={trade} />
             ))}
           </div>
         </section>
@@ -90,17 +84,9 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
 
       <section className="panel section">
         <h2 className="eyebrow">Recent trades</h2>
-        <div className="stack" style={{ marginTop: 10 }}>
+        <div className="trade-list">
           {state.recent.slice(0, 20).map((trade) => (
-            <article key={trade.id} className="activity-row">
-              <strong>{trade.summary}</strong>
-              <div className="small muted">
-                {trade.timeLabel}
-                {trade.byCommish ? ' · commissioner assisted' : ''}
-              </div>
-              <div className="small muted">Gave: {formatMflAssetLabels(trade.offered)}</div>
-              <div className="small muted">Got: {formatMflAssetLabels(trade.requested)}</div>
-            </article>
+            <CompletedTradeCard key={trade.id} trade={trade} />
           ))}
           {state.recent.length === 0 ? <p className="muted small">No completed trades found.</p> : null}
         </div>
