@@ -552,6 +552,42 @@ export function isIncomingPendingTrade(trade: TradeRow, primaryFranchiseId: stri
   return Boolean(primaryFranchiseId && trade.partnerId === primaryFranchiseId);
 }
 
+export type TradeCardSideView = {
+  label: string;
+  assets: MflAsset[];
+  /** Shown above the direction label for neutral (non-primary) trades. */
+  franchiseName?: string;
+};
+
+/** Card copy from the signed-in franchise view: You get / You give, else Offers / Asks for. */
+export function tradeCardSides(
+  trade: Pick<TradeRow, 'franchiseId' | 'partnerId' | 'franchiseName' | 'partnerName' | 'offered' | 'requested'>,
+  primaryFranchiseId: string | null,
+): { left: TradeCardSideView; right: TradeCardSideView; partnerMeta: string | null } {
+  const perspective = perspectiveAssetsForTrade({
+    franchiseId: trade.franchiseId,
+    partnerId: trade.partnerId,
+    offered: trade.offered,
+    requested: trade.requested,
+    primaryFranchiseId,
+  });
+
+  if (perspective.perspective === 'you') {
+    const outgoing = Boolean(primaryFranchiseId && trade.franchiseId === primaryFranchiseId);
+    return {
+      left: { label: 'You get', assets: perspective.get },
+      right: { label: 'You give', assets: perspective.give },
+      partnerMeta: outgoing ? `to ${trade.partnerName}` : `from ${trade.franchiseName}`,
+    };
+  }
+
+  return {
+    left: { label: 'Offers', assets: trade.offered, franchiseName: trade.franchiseName },
+    right: { label: 'Asks for', assets: trade.requested },
+    partnerMeta: trade.partnerName ? `with ${trade.partnerName}` : null,
+  };
+}
+
 export function parseTradesPageState(input: {
   league: unknown;
   players: unknown;

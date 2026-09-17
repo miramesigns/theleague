@@ -7,6 +7,7 @@ import {
   franchiseDisplayLabel,
   isIncomingPendingTrade,
   isOutgoingPendingTrade,
+  tradeCardSides,
   parseCompletedTrades,
   parsePendingTrades,
   parseTradeBait,
@@ -340,6 +341,41 @@ test('incoming vs outgoing pending trade helpers', () => {
   assert.equal(isOutgoingPendingTrade(trade, '0004'), false);
   assert.equal(isOutgoingPendingTrade(trade, '0005'), true);
   assert.equal(isIncomingPendingTrade(trade, '0005'), false);
+});
+
+test('tradeCardSides uses You get / You give from primary perspective', () => {
+  const trade = {
+    franchiseId: '0005',
+    franchiseName: '3-Peat',
+    partnerId: '0004',
+    partnerName: 'The Ashy Elbows',
+    offered: [
+      { kind: 'player' as const, id: '1', label: 'Nailor, Jalen' },
+      { kind: 'player' as const, id: '2', label: 'Vele, Devaughn' },
+      { kind: 'player' as const, id: '3', label: 'TeSlaa, Isaac' },
+    ],
+    requested: [{ kind: 'player' as const, id: '4', label: 'Odunze, Rome' }],
+  };
+
+  const incoming = tradeCardSides(trade, '0004');
+  assert.equal(incoming.left.label, 'You get');
+  assert.equal(incoming.right.label, 'You give');
+  assert.equal(incoming.left.assets.map((a) => a.label).join(' • '), 'Nailor, Jalen • Vele, Devaughn • TeSlaa, Isaac');
+  assert.equal(incoming.right.assets[0].label, 'Odunze, Rome');
+  assert.equal(incoming.partnerMeta, 'from 3-Peat');
+
+  const outgoing = tradeCardSides(trade, '0005');
+  assert.equal(outgoing.left.label, 'You get');
+  assert.equal(outgoing.right.label, 'You give');
+  assert.equal(outgoing.left.assets[0].label, 'Odunze, Rome');
+  assert.equal(outgoing.right.assets.map((a) => a.label).join(' • '), 'Nailor, Jalen • Vele, Devaughn • TeSlaa, Isaac');
+  assert.equal(outgoing.partnerMeta, 'to The Ashy Elbows');
+
+  const neutral = tradeCardSides(trade, '0099');
+  assert.equal(neutral.left.label, 'Offers');
+  assert.equal(neutral.right.label, 'Asks for');
+  assert.equal(neutral.left.franchiseName, '3-Peat');
+  assert.equal(neutral.partnerMeta, 'with The Ashy Elbows');
 });
 
 test('parseTradeBait handles empty bait boards', () => {

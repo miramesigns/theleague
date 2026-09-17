@@ -1,7 +1,7 @@
 "use client";
 
 import { formatMflAssetLabels } from '@/lib/mfl-assets';
-import type { TradeRow } from '@/lib/mfl-trades';
+import { tradeCardSides, type TradeRow } from '@/lib/mfl-trades';
 import {
   FANTASYCALC_TRADE_CALCULATOR_URL,
   formatDelta,
@@ -67,8 +67,35 @@ function playerLabelsForManual(trade: TradeRow): string[] {
     .map((asset) => asset.label);
 }
 
+function TradeParties({
+  sides,
+}: {
+  sides: ReturnType<typeof tradeCardSides>;
+}) {
+  return (
+    <div className="trade-parties">
+      <div className="trade-side trade-side-gets">
+        {sides.left.franchiseName ? (
+          <div className="trade-franchise">{sides.left.franchiseName}</div>
+        ) : null}
+        <div className="trade-direction">{sides.left.label}</div>
+        <div className="trade-assets">{formatMflAssetLabels(sides.left.assets)}</div>
+      </div>
+      <div className="trade-arrow" aria-hidden="true">→</div>
+      <div className="trade-side trade-side-gives">
+        {sides.right.franchiseName ? (
+          <div className="trade-franchise">{sides.right.franchiseName}</div>
+        ) : null}
+        <div className="trade-direction">{sides.right.label}</div>
+        <div className="trade-assets">{formatMflAssetLabels(sides.right.assets)}</div>
+      </div>
+    </div>
+  );
+}
+
 export function TradeCard({
   trade,
+  primaryFranchiseId,
   onAccept,
   onDecline,
   onCounter,
@@ -76,6 +103,7 @@ export function TradeCard({
   onAmend,
 }: {
   trade: TradeRow;
+  primaryFranchiseId: string | null;
   onAccept?: () => void;
   onDecline?: () => void;
   onCounter?: () => void;
@@ -86,23 +114,14 @@ export function TradeCard({
   const hasIncomingActions = Boolean(onAccept || onDecline || onCounter);
   const hasOutgoingActions = Boolean(onRevoke || onAmend);
   const showActions = isPending && (hasIncomingActions || hasOutgoingActions);
+  const sides = tradeCardSides(trade, primaryFranchiseId);
 
   return (
     <article className={`trade-card${isPending ? ' trade-card-pending' : ''}`}>
-      <div className="trade-parties">
-        <div className="trade-side trade-side-gives">
-          <div className="trade-franchise">{trade.franchiseName}</div>
-          <div className="trade-direction">Gives</div>
-          <div className="trade-assets">{formatMflAssetLabels(trade.offered)}</div>
-        </div>
-        <div className="trade-arrow" aria-hidden="true">→</div>
-        <div className="trade-side trade-side-receives">
-          <div className="trade-franchise">{trade.partnerName}</div>
-          <div className="trade-direction">Gets</div>
-          <div className="trade-assets">{formatMflAssetLabels(trade.requested)}</div>
-        </div>
-      </div>
+      <TradeParties sides={sides} />
       <div className="trade-meta">
+        {sides.partnerMeta ? <span>{sides.partnerMeta}</span> : null}
+        {sides.partnerMeta ? <span aria-hidden="true">·</span> : null}
         <span>{trade.timeLabel}</span>
         {trade.expiresLabel ? <span>· expires {trade.expiresLabel}</span> : null}
         {trade.byCommish ? <span className="trade-commish">commissioner assisted</span> : null}
@@ -145,23 +164,21 @@ export function TradeCard({
   );
 }
 
-export function CompletedTradeCard({ trade }: { trade: TradeRow }) {
+export function CompletedTradeCard({
+  trade,
+  primaryFranchiseId,
+}: {
+  trade: TradeRow;
+  primaryFranchiseId: string | null;
+}) {
+  const sides = tradeCardSides(trade, primaryFranchiseId);
+
   return (
     <article className="trade-card">
-      <div className="trade-parties">
-        <div className="trade-side trade-side-gives">
-          <div className="trade-franchise">{trade.franchiseName}</div>
-          <div className="trade-direction">Gives</div>
-          <div className="trade-assets">{formatMflAssetLabels(trade.offered)}</div>
-        </div>
-        <div className="trade-arrow" aria-hidden="true">→</div>
-        <div className="trade-side trade-side-receives">
-          <div className="trade-franchise">{trade.partnerName}</div>
-          <div className="trade-direction">Gets</div>
-          <div className="trade-assets">{formatMflAssetLabels(trade.requested)}</div>
-        </div>
-      </div>
+      <TradeParties sides={sides} />
       <div className="trade-meta">
+        {sides.partnerMeta ? <span>{sides.partnerMeta}</span> : null}
+        {sides.partnerMeta ? <span aria-hidden="true">·</span> : null}
         <span>{trade.timeLabel}</span>
         {trade.byCommish ? <span className="trade-commish">commissioner assisted</span> : null}
       </div>

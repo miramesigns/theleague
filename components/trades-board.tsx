@@ -350,6 +350,7 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
                 <TradeCard
                   key={trade.id}
                   trade={trade}
+                  primaryFranchiseId={state.franchiseId}
                   onAccept={
                     incoming
                       ? () => {
@@ -390,7 +391,7 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
         </section>
       )}
 
-      <RecentTradesSection recent={state.recent} />
+      <RecentTradesSection recent={state.recent} primaryFranchiseId={state.franchiseId} />
 
       {state.tradeBait.length > 0 ? (
         <section className="panel section">
@@ -550,7 +551,13 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
   );
 }
 
-function RecentTradesSection({ recent }: { recent: TradesPageState['recent'] }) {
+function RecentTradesSection({
+  recent,
+  primaryFranchiseId,
+}: {
+  recent: TradesPageState['recent'];
+  primaryFranchiseId: string | null;
+}) {
   const [expanded, setExpanded] = useState(false);
   const visible = expanded ? recent : recent.slice(0, 3);
   const hasMore = recent.length > 3;
@@ -560,7 +567,11 @@ function RecentTradesSection({ recent }: { recent: TradesPageState['recent'] }) 
       <h2 className="eyebrow">Recent trades</h2>
       <div className="trade-list">
         {visible.map((trade) => (
-          <CompletedTradeCard key={trade.id} trade={trade} />
+          <CompletedTradeCard
+            key={trade.id}
+            trade={trade}
+            primaryFranchiseId={primaryFranchiseId}
+          />
         ))}
         {recent.length === 0 ? <p className="muted small">No completed trades found.</p> : null}
       </div>

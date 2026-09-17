@@ -1474,11 +1474,11 @@ textarea {
   min-width: 0;
 }
 
-.trade-side-gives {
+.trade-side-gets {
   text-align: left;
 }
 
-.trade-side-receives {
+.trade-side-gives {
   text-align: right;
 }
 
@@ -1610,7 +1610,7 @@ textarea {
     display: none;
   }
 
-  .trade-side-receives {
+  .trade-side-gives {
     text-align: left;
     padding-top: 8px;
     border-top: 1px solid var(--line);
