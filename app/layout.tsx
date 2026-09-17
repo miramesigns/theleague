@@ -6,6 +6,7 @@ import { Suspense } from 'react';
 import './globals.css';
 import { AuthControls } from '@/components/auth-controls';
 import { BottomTabs } from '@/components/bottom-tabs';
+import { PullToRefresh } from '@/components/pull-to-refresh';
 import { getMflSessionCookieValue } from '@/lib/mfl-session';
 
 export const metadata: Metadata = {
@@ -53,6 +54,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                 </Suspense>
               </div>
             </header>
+            <PullToRefresh />
             {children}
           </div>
         </div>

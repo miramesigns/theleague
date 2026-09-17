@@ -1552,3 +1552,41 @@ textarea {
     border-top: 1px solid var(--line);
   }
 }
+
+.pull-indicator {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  pointer-events: none;
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.pull-spinner {
+  width: 20px;
+  height: 20px;
+  color: var(--accent);
+}
+
+.pull-spinner svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.pull-ready .pull-spinner {
+  animation: spin 0.6s linear infinite;
+}
+
+.pull-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
