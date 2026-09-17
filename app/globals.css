@@ -1245,9 +1245,10 @@ textarea {
   }
 
   .site-banner-image {
-    width: 112%;
+    width: 100%;
     max-width: none;
-    margin-left: -6%;
+    height: auto;
+    display: block;
   }
 
   .topbar-actions {

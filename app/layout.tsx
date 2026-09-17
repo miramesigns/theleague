@@ -38,11 +38,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             <header className="topbar site-header">
               <Link href="/scores" className="site-banner" aria-label="MFL League Companion home">
                 <Image
-                  src="/the-league-2026-hero-clean.png"
-                  alt="The League 2026 — Week 1 live fantasy football companion"
+                  src="/the-league-2026-hero-new.png"
+                  alt="The League 2026 — Fantasy Football Championship"
                   className="site-banner-image"
-                  width={1953}
-                  height={805}
+                  width={1792}
+                  height={1024}
                   sizes="(max-width: 600px) 100vw, 848px"
                   preload
                 />
