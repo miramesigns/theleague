@@ -222,7 +222,11 @@ function franchiseDirectory(payload: unknown): Map<string, string> {
       .map((franchise) => {
         const attrs = record(franchise['@attributes']);
         const id = normalizeFranchiseId(franchise.id ?? attrs?.id ?? franchise.franchise_id);
-        const name = text(franchise.name ?? attrs?.name ?? franchise.franchise_name) || (id ? `Franchise ${id}` : '');
+        // Prefer display name (emoji-only names are valid); fall back to abbrev, never invent Unknown when id exists.
+        const name =
+          text(franchise.name ?? attrs?.name ?? franchise.franchise_name) ||
+          text(franchise.abbrev ?? attrs?.abbrev ?? franchise.abbreviation) ||
+          (id ? `Franchise ${id}` : '');
         return [id, name] as const;
       })
       .filter(([id, name]) => Boolean(id) && Boolean(name)),
@@ -289,11 +293,29 @@ export function parsePendingTrades(
   const entries = records(pendingRoot?.pendingTrade ?? pendingRoot?.trade ?? pendingRoot?.transaction);
 
   return entries.map((entry, index) => {
+    // MFL pendingTrades uses offeringteam (giver) + offeredto (receiver) — not franchise/franchise2.
     const franchiseId = normalizeFranchiseId(
-      entryValue(entry, 'franchise', 'franchise1', 'will_give_up_franchise', 'offeredby', 'offeredBy'),
+      entryValue(
+        entry,
+        'offeringteam',
+        'offering_team',
+        'franchise',
+        'franchise1',
+        'will_give_up_franchise',
+        'offeredby',
+        'offeredBy',
+      ),
     );
     const partnerId = normalizeFranchiseId(
-      entryValue(entry, 'franchise2', 'partner', 'will_receive_franchise', 'receiving_franchise'),
+      entryValue(
+        entry,
+        'offeredto',
+        'offered_to',
+        'franchise2',
+        'partner',
+        'will_receive_franchise',
+        'receiving_franchise',
+      ),
     );
     const offered = parseMflAssetList(
       text(entryValue(entry, 'franchise1_gave_up', 'will_give_up', 'offered', 'gives')),
@@ -305,11 +327,14 @@ export function parsePendingTrades(
     );
     const timestamp = numberValue(entryValue(entry, 'timestamp')) ?? 0;
     const expiresAt = numberValue(entryValue(entry, 'expires', 'expiration'));
+    const tradeId = text(entryValue(entry, 'trade_id', 'id'));
     const franchiseName = resolveFranchiseName(names, franchiseId);
     const partnerName = resolveFranchiseName(names, partnerId);
 
     return {
-      id: `pending-${franchiseId || 'unk'}-${partnerId || 'unk'}-${timestamp}-${index}`,
+      id: tradeId
+        ? `pending-${tradeId}`
+        : `pending-${franchiseId || 'unk'}-${partnerId || 'unk'}-${timestamp}-${index}`,
       timestamp,
       timeLabel: formatMflTimestamp(timestamp),
       expiresAt,
