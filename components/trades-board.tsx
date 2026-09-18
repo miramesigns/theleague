@@ -8,9 +8,11 @@ import { CompletedTradeCard, TradeCard } from '@/components/trade-card';
 import type { MflAsset } from '@/lib/mfl-assets';
 import {
   amendDraftFromPendingTrade,
+  buildTradeDraftNameById,
   counterDraftFromPendingTrade,
   isIncomingPendingTrade,
   isOutgoingPendingTrade,
+  resolveTradeDraftAssetLabel,
   type TradeRow,
   type TradesPageState,
 } from '@/lib/mfl-trades';
@@ -24,16 +26,13 @@ import {
 
 type PendingAction = 'accept' | 'reject' | 'revoke' | null;
 
-function assetLabel(assets: MflAsset[], id: string): string {
-  return assets.find((asset) => asset.id === id)?.label || `Player ${id}`;
-}
-
 function PlayerAssetPicker({
   label,
   assets,
   selectedIds,
   onChange,
   valueCatalog,
+  nameById,
   emptyMessage,
   searchPlaceholder,
 }: {
@@ -42,13 +41,21 @@ function PlayerAssetPicker({
   selectedIds: string[];
   onChange: (ids: string[]) => void;
   valueCatalog: TradesPageState['valueCatalog'];
+  nameById: Map<string, string>;
   emptyMessage: string;
   searchPlaceholder: string;
 }) {
   const [query, setQuery] = useState('');
   const selected = useMemo(
-    () => selectedIds.map((id) => assets.find((asset) => asset.id === id) || { kind: 'player' as const, id, label: `Player ${id}` }),
-    [assets, selectedIds],
+    () =>
+      selectedIds.map((id) => {
+        const fromPool = assets.find((asset) => asset.id === id);
+        const resolvedLabel = resolveTradeDraftAssetLabel(id, nameById, assets);
+        return fromPool
+          ? { ...fromPool, label: resolvedLabel }
+          : { kind: 'player' as const, id, label: resolvedLabel };
+      }),
+    [assets, nameById, selectedIds],
   );
 
   const available = useMemo(() => {
@@ -166,6 +173,27 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
 
   const partnerName = partners.find((franchise) => franchise.id === partnerId)?.name || 'Partner';
   const isAmend = Boolean(revokeTradeId);
+  const nameById = useMemo(
+    () =>
+      buildTradeDraftNameById({
+        myRosterAssets: state.myRosterAssets,
+        rosterAssetsByFranchiseId: state.rosterAssetsByFranchiseId,
+        freeAgentAssets: state.freeAgentAssets,
+        valueCatalog: state.valueCatalog,
+        pending: state.pending,
+        recent: state.recent,
+        tradeBait: state.tradeBait,
+      }),
+    [
+      state.freeAgentAssets,
+      state.myRosterAssets,
+      state.pending,
+      state.recent,
+      state.rosterAssetsByFranchiseId,
+      state.tradeBait,
+      state.valueCatalog,
+    ],
+  );
   const requestPool = useMemo(() => {
     const partnerRoster = state.rosterAssetsByFranchiseId[partnerId] ?? [];
     const seen = new Set<string>();
@@ -194,7 +222,7 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
         giveTotal += hit.value;
         giveMatched += 1;
       } else {
-        misses.push(assetLabel(state.myRosterAssets, id));
+        misses.push(resolveTradeDraftAssetLabel(id, nameById, state.myRosterAssets));
       }
     }
 
@@ -204,7 +232,7 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
         getTotal += hit.value;
         getMatched += 1;
       } else {
-        misses.push(assetLabel(requestPool, id));
+        misses.push(resolveTradeDraftAssetLabel(id, nameById, requestPool));
       }
     }
 
@@ -220,7 +248,7 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
       settingsNote: state.valueCatalog?.settingsNote ?? '',
       hasValues: giveMatched > 0 || getMatched > 0,
     };
-  }, [offering, requestPool, requesting, state.myRosterAssets, state.valueCatalog]);
+  }, [nameById, offering, requestPool, requesting, state.myRosterAssets, state.valueCatalog]);
 
   const clearAmendMode = () => setRevokeTradeId(null);
 
@@ -449,6 +477,7 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
             selectedIds={offering}
             onChange={setOffering}
             valueCatalog={state.valueCatalog}
+            nameById={nameById}
             emptyMessage="Sign in with a roster to pick assets."
             searchPlaceholder="Search your roster…"
           />
@@ -459,6 +488,7 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
             selectedIds={requesting}
             onChange={setRequesting}
             valueCatalog={state.valueCatalog}
+            nameById={nameById}
             emptyMessage="Partner roster / free agents unavailable."
             searchPlaceholder="Search partner roster or free agents…"
           />

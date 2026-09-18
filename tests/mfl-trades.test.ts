@@ -3,10 +3,13 @@ import test from 'node:test';
 
 import {
   amendDraftFromPendingTrade,
+  buildTradeDraftNameById,
   counterDraftFromPendingTrade,
   franchiseDisplayLabel,
   isIncomingPendingTrade,
   isOutgoingPendingTrade,
+  isPlaceholderPlayerLabel,
+  resolveTradeDraftAssetLabel,
   tradeCardSides,
   parseCompletedTrades,
   parsePendingTrades,
@@ -267,7 +270,7 @@ test('parseTradesPageState resolves pending offeringteam names via league franch
   assert.doesNotMatch(state.pending[0].franchiseName, /🏆/);
 });
 
-test('counterDraftFromPendingTrade swaps assets for the primary franchise', () => {
+test('counterDraftFromPendingTrade prefills give/get as You offer / You request', () => {
   const draft = counterDraftFromPendingTrade(
     {
       id: 'pending-1',
@@ -277,11 +280,15 @@ test('counterDraftFromPendingTrade swaps assets for the primary franchise', () =
       expiresAt: null,
       expiresLabel: null,
       franchiseId: '0005',
-      franchiseName: 'Them',
+      franchiseName: 'Shadow',
       partnerId: '0004',
       partnerName: 'Me',
-      offered: [{ kind: 'player', id: '16287', label: 'Tucker, Tre' }],
-      requested: [{ kind: 'player', id: '15751', label: 'London, Drake' }],
+      // Shadow offers WRs; requests our TE
+      offered: [
+        { kind: 'player', id: '16187', label: 'Player 16187' },
+        { kind: 'player', id: '17599', label: 'Player 17599' },
+      ],
+      requested: [{ kind: 'player', id: '17104', label: 'Loveland, Colston' }],
       summary: '',
       status: 'pending',
       byCommish: false,
@@ -289,8 +296,9 @@ test('counterDraftFromPendingTrade swaps assets for the primary franchise', () =
     '0004',
   );
   assert.equal(draft.partnerId, '0005');
-  assert.deepEqual(draft.offeringPlayerIds, ['16287']);
-  assert.deepEqual(draft.requestingPlayerIds, ['15751']);
+  // Same terms as an outgoing offer from primary: offer what we'd give, request what we'd get.
+  assert.deepEqual(draft.offeringPlayerIds, ['17104']);
+  assert.deepEqual(draft.requestingPlayerIds, ['16187', '17599']);
   assert.equal(draft.revokeTradeId, null);
 });
 
@@ -317,6 +325,56 @@ test('amendDraftFromPendingTrade keeps same assets and revoke trade id', () => {
   assert.deepEqual(draft.requestingPlayerIds, ['15751']);
   assert.equal(draft.revokeTradeId, '1587');
   assert.ok(draft.expiresDays !== null && draft.expiresDays >= 1);
+});
+
+test('resolveTradeDraftAssetLabel uses name map when id is missing from side pool', () => {
+  const nameById = buildTradeDraftNameById({
+    myRosterAssets: [{ kind: 'player', id: '99901', label: 'Loveland, Colston' }],
+    rosterAssetsByFranchiseId: {
+      '0005': [{ kind: 'player', id: '16187', label: 'Player 16187' }],
+    },
+    freeAgentAssets: [],
+    valueCatalog: {
+      settingsNote: '',
+      byMflId: {
+        '16187': { value: 1813, name: 'Odunze, Rome', fantasyCalcId: 1 },
+        '17599': { value: 1784, name: 'Burden, Luther', fantasyCalcId: 2 },
+        '17104': { value: 4521, name: 'Hunter, Travis', fantasyCalcId: 3 },
+      },
+    },
+    pending: [
+      {
+        id: 'p1',
+        mflTradeId: '1',
+        timestamp: 1,
+        timeLabel: '',
+        expiresAt: null,
+        expiresLabel: null,
+        franchiseId: '0005',
+        franchiseName: 'Shadow',
+        partnerId: '0004',
+        partnerName: 'Me',
+        offered: [{ kind: 'player', id: '16187', label: 'Odunze, Rome' }],
+        requested: [{ kind: 'player', id: '17104', label: 'Hunter, Travis' }],
+        summary: '',
+        status: 'pending',
+        byCommish: false,
+      },
+    ],
+  });
+
+  assert.equal(isPlaceholderPlayerLabel('Player 16187', '16187'), true);
+  assert.equal(isPlaceholderPlayerLabel('Odunze, Rome', '16187'), false);
+
+  // Pool empty (counter prefill id not on this side) — still resolve from catalog / pending.
+  assert.equal(resolveTradeDraftAssetLabel('16187', nameById, []), 'Odunze, Rome');
+  assert.equal(resolveTradeDraftAssetLabel('17599', nameById, []), 'Burden, Luther');
+  assert.equal(resolveTradeDraftAssetLabel('17104', nameById, []), 'Hunter, Travis');
+  assert.equal(
+    resolveTradeDraftAssetLabel('99901', nameById, [{ kind: 'player', id: '99901', label: 'Loveland, Colston' }]),
+    'Loveland, Colston',
+  );
+  assert.equal(resolveTradeDraftAssetLabel('00000', nameById, []), 'Player 00000');
 });
 
 test('incoming vs outgoing pending trade helpers', () => {
