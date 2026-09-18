@@ -144,21 +144,135 @@ textarea {
 }
 
 .scoreboard-banner {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 10px 12px;
 }
 
-.scoreboard-feed-pill {
-  grid-column: 2;
-  grid-row: 1;
-  justify-self: end;
+.scoreboard-week-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
 }
 
 .scoreboard-week-picker {
-  grid-column: 1 / -1;
-  grid-row: 2;
-  justify-self: start;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.scoreboard-banner .week-picker {
+  gap: 0;
+}
+
+.scoreboard-banner .week-picker > .small {
+  display: none;
+}
+
+.scoreboard-banner .week-select {
+  min-width: 0;
+  width: auto;
+  max-width: 100%;
+  min-height: 34px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.scoreboard-feed-pill {
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.scoreboard-feed-pill.live {
+  color: #08111f;
+  background: var(--accent);
+  border-color: transparent;
+  font-weight: 700;
+}
+
+.scoreboard-week-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 0;
+  row-gap: 3px;
+  min-width: 0;
+}
+
+.scoreboard-week-summary > :nth-child(odd) {
+  padding-right: 10px;
+  border-right: 1px solid var(--line);
+}
+
+.scoreboard-week-summary > :nth-child(even) {
+  padding-left: 10px;
+}
+
+.scoreboard-mini-matchup {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 4px;
+  align-items: center;
+  min-width: 0;
+  font-size: 10px;
+  line-height: 1.35;
+  color: #c5d2e0;
+  border-radius: 4px;
+}
+
+.scoreboard-mini-matchup:hover,
+.scoreboard-mini-matchup:focus-visible {
+  color: var(--text);
+  outline: none;
+}
+
+.scoreboard-mini-matchup.primary {
+  color: #fff;
+  border-left: 2px solid var(--accent);
+  padding-left: 6px;
+  margin-left: -2px;
+}
+
+.scoreboard-mini-a,
+.scoreboard-mini-b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scoreboard-mini-a {
+  text-align: left;
+}
+
+.scoreboard-mini-b {
+  text-align: right;
+}
+
+.scoreboard-mini-s {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+@media (max-width: 340px) {
+  .scoreboard-week-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .scoreboard-week-summary > :nth-child(odd),
+  .scoreboard-week-summary > :nth-child(even) {
+    padding-left: 0;
+    padding-right: 0;
+    border-right: none;
+  }
 }
 
 .scores-controls {

@@ -30,12 +30,18 @@ export type MatchupTeamSummary = {
 export type MatchupTeam = {
   teamId: string;
   teamName: string;
+  teamAbbrev: string | null;
   isHome: boolean;
   score: number | null;
   result: string | null;
   status: 'Live' | 'Final' | 'Scheduled';
   players: MatchupPlayer[];
   summary: MatchupTeamSummary;
+};
+
+type FranchiseNameEntry = {
+  name: string;
+  abbrev: string | null;
 };
 
 export type MatchupCard = {
@@ -209,7 +215,7 @@ function determineLiveStatus(franchise: Record<string, unknown>): MatchupTeam['s
   return 'Final';
 }
 
-function parseLeagueNames(leaguePayload: unknown): Map<string, string> | null {
+function parseLeagueNames(leaguePayload: unknown): Map<string, FranchiseNameEntry> | null {
   const leagueRoot = toRecord(leaguePayload)?.league;
   const leagueRecord = toRecord(leagueRoot);
   const franchisesRecord = toRecord(leagueRecord?.franchises);
@@ -219,16 +225,23 @@ function parseLeagueNames(leaguePayload: unknown): Map<string, string> | null {
     return null;
   }
 
-  const namesById = new Map<string, string>();
+  const namesById = new Map<string, FranchiseNameEntry>();
 
   for (const franchise of franchises) {
-    const id = extractText(franchise.id);
+    const attrs = toRecord(franchise['@attributes']);
+    const id = extractText(franchise.id) || extractText(attrs?.id);
     if (!id) {
       return null;
     }
 
-    const name = extractText(franchise.name) || `Franchise ${id}`;
-    namesById.set(id, name);
+    const name = extractText(franchise.name) || extractText(attrs?.name) || `Franchise ${id}`;
+    const abbrev =
+      extractText(franchise.abbrev) ||
+      extractText(attrs?.abbrev) ||
+      extractText(franchise.abbreviation) ||
+      extractText(attrs?.abbreviation) ||
+      null;
+    namesById.set(id, { name, abbrev: abbrev || null });
   }
 
   return namesById.size === 12 ? namesById : null;
@@ -789,7 +802,7 @@ function parseMatchupPlayers(
 
 function parseMatchupTeam(
   franchise: Record<string, unknown>,
-  namesById: Map<string, string>,
+  namesById: Map<string, FranchiseNameEntry>,
   playersById: Map<string, NamedPlayer>,
   projectionsById: Map<string, number>,
   source: ScoresSource,
@@ -799,7 +812,9 @@ function parseMatchupTeam(
     return null;
   }
 
-  const teamName = namesById.get(teamId) || `Franchise ${teamId}`;
+  const entry = namesById.get(teamId);
+  const teamName = entry?.name || `Franchise ${teamId}`;
+  const teamAbbrev = entry?.abbrev ?? null;
   const isHome = safeBoolean(franchise.isHome) ?? false;
   const score = source === 'schedule' ? null : safeNumber(franchise.score);
   const result = source === 'schedule' ? null : extractText(franchise.result) || null;
@@ -813,6 +828,7 @@ function parseMatchupTeam(
   return {
     teamId,
     teamName,
+    teamAbbrev,
     isHome,
     score,
     result,
@@ -831,7 +847,7 @@ function parseMatchupTeam(
 
 function parseMatchupCards(
   weekRecord: Record<string, unknown> | null | undefined,
-  namesById: Map<string, string>,
+  namesById: Map<string, FranchiseNameEntry>,
   playersById: Map<string, NamedPlayer>,
   projectionsById: Map<string, number>,
   source: ScoresSource,
@@ -1036,7 +1052,7 @@ function buildSelectedMatchupState(args: {
 function parseSelectedMatchup(
   weekRecord: Record<string, unknown> | null | undefined,
   franchiseId: string,
-  namesById: Map<string, string>,
+  namesById: Map<string, FranchiseNameEntry>,
   playersById: Map<string, NamedPlayer>,
   projectionsById: Map<string, number>,
   source: ScoresSource,

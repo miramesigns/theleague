@@ -35,19 +35,19 @@ function createJsonResponse(body: unknown, status = 200): Response {
 
 function makeLeaguePayload() {
   const franchises = [
-    ['0001', 'Alpha Wolves'],
-    ['0002', 'Beta Bears'],
-    ['0003', 'Crimson Cats'],
-    ['0004', 'The Ashy Elbows'],
-    ['0005', 'Emerald Eagles'],
-    ['0006', 'Frost Foxes'],
-    ['0007', 'Granite Giants'],
-    ['0008', 'Harbor Hawks'],
-    ['0009', 'Ivory Iguanas'],
-    ['0010', 'Jade Jaguars'],
-    ['0011', 'Knight Owls'],
-    ['0012', 'Lunar Lions'],
-  ].map(([id, name]) => ({ id, name }));
+    ['0001', 'Alpha Wolves', 'Alpha'],
+    ['0002', 'Beta Bears', 'Beta'],
+    ['0003', 'Crimson Cats', 'Crimson'],
+    ['0004', 'The Ashy Elbows', 'Elbows'],
+    ['0005', 'Emerald Eagles', 'Eagles'],
+    ['0006', 'Frost Foxes', 'Frost'],
+    ['0007', 'Granite Giants', 'Giants'],
+    ['0008', 'Harbor Hawks', 'Harbor'],
+    ['0009', 'Ivory Iguanas', 'Ivory'],
+    ['0010', 'Jade Jaguars', 'Jade'],
+    ['0011', 'Knight Owls', 'Knights'],
+    ['0012', 'Lunar Lions', 'Lunar'],
+  ].map(([id, name, abbrev]) => ({ id, name, abbrev }));
 
   return {
     league: {
@@ -350,6 +350,7 @@ test('MFL-style simulation makes the projected favorite the favorite despite a c
   const team = (teamId: string, score: number, isHome: boolean, players: Array<[string, string]>): MatchupTeam => ({
     teamId,
     teamName: teamId,
+    teamAbbrev: null,
     isHome,
     score,
     result: null,
@@ -426,7 +427,9 @@ test('loadScoreboardState defaults to the current live week and uses live scorin
     assert.equal(result.matchups.length, 6);
     assert.equal(requests.some((request) => request.type === 'weeklyResults'), false);
     assert.equal(result.matchups[0].home.teamName, 'Alpha Wolves');
+    assert.equal(result.matchups[0].home.teamAbbrev, 'Alpha');
     assert.equal(result.matchups[0].away.teamName, 'Beta Bears');
+    assert.equal(result.matchups[0].away.teamAbbrev, 'Beta');
     assert.equal(result.matchups.every((matchup) => matchup.home.isHome && !matchup.away.isHome), true);
     assert.equal(result.matchups[0].home.summary.played, 1);
     assert.equal(result.matchups[0].home.summary.playing, 1);
@@ -643,6 +646,7 @@ test('loadScoreboardState promotes franchise 0004 to the first matchup card', as
     assert.equal(result.matchups[0].away.teamId, '0004');
     assert.equal(result.matchups[0].hrefFranchiseId, '0004');
     assert.equal(result.matchups[0].away.teamName, 'The Ashy Elbows');
+    assert.equal(result.matchups[0].away.teamAbbrev, 'Elbows');
     assert.equal(requests.includes('myleagues'), true);
   } finally {
     globalThis.fetch = originalFetch;
