@@ -241,6 +241,15 @@ test('shortFranchiseLabel prefers abbrev and truncates long names', () => {
     }),
     'Alpha Wol…',
   );
+  assert.equal(
+    shortFranchiseLabel({
+      name: 'Gas Factory',
+      abbrev: 'U KNOW WHY IM HERE',
+      id: '0007',
+      maxLength: 10,
+    }),
+    'U KNOW WH…',
+  );
 });
 
 test('parseTradesPageState resolves pending offeringteam names via league franchise map', () => {

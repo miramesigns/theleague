@@ -183,11 +183,9 @@ export function shortFranchiseLabel(input: {
   id?: string | null;
   maxLength?: number;
 }): string {
-  const abbrev = (input.abbrev ?? '').trim();
-  if (abbrev) return abbrev;
-
-  const label = franchiseDisplayLabel(input);
   const maxLength = input.maxLength ?? 10;
+  const abbrev = (input.abbrev ?? '').trim();
+  const label = abbrev || franchiseDisplayLabel(input);
   if (label.length <= maxLength) return label;
   return `${label.slice(0, Math.max(1, maxLength - 1))}…`;
 }
