@@ -6,7 +6,6 @@ import type { LeagueNotification, NotificationsPageState } from '@/lib/mfl-notif
 
 const READ_KEY = 'mfl-companion-notification-reads';
 const PREFS_KEY = 'mfl-companion-notification-prefs';
-const PUSH_DRAFT_KEY = 'mfl-companion-push-draft';
 
 type Prefs = {
   scores: boolean;
@@ -27,7 +26,6 @@ const defaultPrefs: Prefs = {
 type NotificationStore = {
   readIds: string[];
   prefs: Prefs;
-  pushStatus: string;
 };
 
 const listeners = new Set<() => void>();
@@ -36,7 +34,6 @@ const listeners = new Set<() => void>();
 let cachedSnapshot: NotificationStore = {
   readIds: [],
   prefs: defaultPrefs,
-  pushStatus: 'Push stays draft/opt-in. No paid vendor.',
 };
 let cachedSignature = '';
 
@@ -80,25 +77,20 @@ function getStoreSnapshot(): NotificationStore {
     ? storedReads.filter((id): id is string => typeof id === 'string').slice(-200)
     : [];
   const prefs = normalizePrefs(readJson<unknown>(PREFS_KEY, null));
-  const draft = window.localStorage.getItem(PUSH_DRAFT_KEY);
-  const pushStatus = draft
-    ? 'Web Push preference drafted locally. Outbound delivery remains gated.'
-    : 'Push stays draft/opt-in. No paid vendor.';
 
-  const signature = `${readIds.join('\0')}|${prefs.scores}|${prefs.lineup}|${prefs.waiver}|${prefs.trade}|${prefs.league}|${pushStatus}`;
+  const signature = `${readIds.join('\0')}|${prefs.scores}|${prefs.lineup}|${prefs.waiver}|${prefs.trade}|${prefs.league}`;
   if (signature === cachedSignature) {
     return cachedSnapshot;
   }
 
   cachedSignature = signature;
-  cachedSnapshot = { readIds, prefs, pushStatus };
+  cachedSnapshot = { readIds, prefs };
   return cachedSnapshot;
 }
 
 const serverSnapshot: NotificationStore = {
   readIds: [],
   prefs: defaultPrefs,
-  pushStatus: 'Push stays draft/opt-in. No paid vendor.',
 };
 
 function getServerSnapshot() {
@@ -115,15 +107,6 @@ function writePrefs(next: Prefs) {
   emit();
 }
 
-function writePushDraft(prefs: Prefs) {
-  window.localStorage.setItem(PUSH_DRAFT_KEY, JSON.stringify({
-    optedInAt: new Date().toISOString(),
-    prefs,
-    note: 'Draft only — no push endpoint is registered to a paid vendor or remote sender yet.',
-  }));
-  emit();
-}
-
 function categoryEnabled(prefs: Prefs, category: LeagueNotification['category']): boolean {
   if (category === 'score') return prefs.scores;
   if (category === 'lineup') return prefs.lineup;
@@ -134,7 +117,7 @@ function categoryEnabled(prefs: Prefs, category: LeagueNotification['category'])
 
 export function NotificationsCenter({ state }: { state: NotificationsPageState }) {
   const store = useSyncExternalStore(subscribe, getStoreSnapshot, getServerSnapshot);
-  const { readIds, prefs, pushStatus } = store;
+  const { readIds, prefs } = store;
 
   const visible = useMemo(
     () => state.notifications.filter((entry) => categoryEnabled(prefs, entry.category)),
@@ -154,31 +137,6 @@ export function NotificationsCenter({ state }: { state: NotificationsPageState }
 
   const updatePref = (key: keyof Prefs, value: boolean) => {
     writePrefs({ ...prefs, [key]: value });
-  };
-
-  const draftPushOptIn = async () => {
-    try {
-      if (typeof window === 'undefined' || !('Notification' in window)) {
-        writePushDraft(prefs);
-        return;
-      }
-
-      const permission = await Notification.requestPermission();
-      if (permission !== 'granted') {
-        window.localStorage.setItem(PUSH_DRAFT_KEY, JSON.stringify({
-          optedInAt: null,
-          denied: true,
-          prefs,
-        }));
-        cachedSignature = '';
-        emit();
-        return;
-      }
-
-      writePushDraft(prefs);
-    } catch {
-      // Keep in-app center usable even if permission APIs throw.
-    }
   };
 
   return (
@@ -204,16 +162,6 @@ export function NotificationsCenter({ state }: { state: NotificationsPageState }
               {label}
             </label>
           ))}
-        </div>
-      </section>
-
-      <section className="panel section">
-        <h2 className="eyebrow">Web Push (optional draft)</h2>
-        <p className="small muted" style={{ marginTop: 8 }}>{pushStatus}</p>
-        <div className="actions" style={{ marginTop: 12 }}>
-          <button type="button" className="button primary" onClick={draftPushOptIn} disabled={!state.pushDraftAvailable}>
-            Draft opt-in
-          </button>
         </div>
       </section>
 

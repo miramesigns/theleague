@@ -26,7 +26,6 @@ export type NotificationsPageState = {
   message: string;
   franchiseId: string | null;
   notifications: LeagueNotification[];
-  pushDraftAvailable: boolean;
 };
 
 function record(value: unknown): RecordValue | null {
@@ -301,11 +300,10 @@ export function parseNotificationsPageState(input: {
   return {
     ok: notifications.length > 0,
     message: notifications.length > 0
-      ? 'In-app alerts from recent MFL activity. Opt in below for Web Push on the same email-style events.'
+      ? 'In-app alerts from recent MFL activity. Use Enable push above for Web Push on the same email-style events.'
       : 'No recent league activity to surface yet.',
     franchiseId: input.primaryFranchiseId,
     notifications,
-    pushDraftAvailable: true,
   };
 }
 
@@ -379,7 +377,6 @@ export async function loadNotificationsPageState(sessionCookieValue: string | nu
         message: 'Notifications could not be loaded from MFL.',
         franchiseId: primary?.franchiseId ?? null,
         notifications: [],
-        pushDraftAvailable: true,
       };
     }
 
@@ -408,7 +405,6 @@ export async function loadNotificationsPageState(sessionCookieValue: string | nu
       message: 'Notifications could not be loaded from MFL.',
       franchiseId: null,
       notifications: [],
-      pushDraftAvailable: true,
     };
   }
 }

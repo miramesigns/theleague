@@ -127,5 +127,4 @@ test('parseNotificationsPageState returns empty-friendly messaging', () => {
 
   assert.equal(state.ok, false);
   assert.match(state.message, /No recent league activity/);
-  assert.equal(state.pushDraftAvailable, true);
 });
