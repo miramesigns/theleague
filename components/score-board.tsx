@@ -78,7 +78,7 @@ function MiniMatchupRow({
 }) {
   const homeLabel = compactTeamLabel(matchup.home);
   const awayLabel = compactTeamLabel(matchup.away);
-  const scoreText = `${formatCompactScore(matchup.home.score)}–${formatCompactScore(matchup.away.score)}`;
+  const scoreText = `${formatCompactScore(matchup.home.score)} – ${formatCompactScore(matchup.away.score)}`;
 
   return (
     <Link
