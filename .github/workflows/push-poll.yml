@@ -1,12 +1,15 @@
-# Near-real-time Web Push poll (Vercel Hobby only allows 1 cron/day).
-# Secrets: CRON_SECRET, APP_URL (e.g. https://your-app.vercel.app)
+# Optional backup for Web Push poll.
+# Primary scheduler: Vercel Pro cron in vercel.json (every 5 minutes → GET /api/push/poll).
+# Schedule is disabled to avoid double-firing alongside Vercel; poll already dedupes sent IDs,
+# but running both still wastes invocations. Re-enable the cron below only if Vercel cron is down.
+# Secrets (for manual/backup runs): CRON_SECRET, APP_URL (e.g. https://theleague2026.vercel.app)
 
 name: Push poll
 
 on:
-  schedule:
-    # Every 10 minutes
-    - cron: '*/10 * * * *'
+  # schedule:
+  #   # Every 10 minutes — Hobby-era backup; leave commented while Vercel Pro cron is primary
+  #   - cron: '*/10 * * * *'
   workflow_dispatch:
 
 jobs:

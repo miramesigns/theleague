@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/push/poll",
-      "schedule": "0 16 * * *"
+      "schedule": "*/5 * * * *"
     }
   ]
 }
