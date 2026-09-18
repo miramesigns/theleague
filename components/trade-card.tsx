@@ -93,6 +93,10 @@ function TradeParties({
   );
 }
 
+function TradePartnerTitle({ title }: { title: string }) {
+  return <h3 className="trade-partner-title">{title}</h3>;
+}
+
 export function TradeCard({
   trade,
   primaryFranchiseId,
@@ -118,6 +122,7 @@ export function TradeCard({
 
   return (
     <article className={`trade-card${isPending ? ' trade-card-pending' : ''}`}>
+      {sides.partnerTitle ? <TradePartnerTitle title={sides.partnerTitle} /> : null}
       <TradeParties sides={sides} />
       <div className="trade-meta">
         {sides.partnerMeta ? <span>{sides.partnerMeta}</span> : null}
@@ -175,6 +180,7 @@ export function CompletedTradeCard({
 
   return (
     <article className="trade-card">
+      {sides.partnerTitle ? <TradePartnerTitle title={sides.partnerTitle} /> : null}
       <TradeParties sides={sides} />
       <div className="trade-meta">
         {sides.partnerMeta ? <span>{sides.partnerMeta}</span> : null}
