@@ -19,11 +19,11 @@ export default async function NotificationsPage() {
         <span className="pill">{state.notifications.length} alerts</span>
       </div>
 
-      <NotificationsCenter state={state} />
-
       <section className="panel section stack">
         <PushSubscribe />
       </section>
+
+      <NotificationsCenter state={state} />
     </main>
   );
 }
