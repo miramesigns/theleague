@@ -487,7 +487,81 @@ function parseFreeAgentAssets(freeAgentsPayload: unknown, playersPayload: unknow
   return assets.sort((left, right) => left.label.localeCompare(right.label));
 }
 
-/** Prefill a counter draft: partner = other side; offer what you were getting; request what you were giving. */
+/** True when a label is the unresolved `Player {id}` fallback. */
+export function isPlaceholderPlayerLabel(label: string, id: string): boolean {
+  return !label.trim() || label.trim() === `Player ${id}`;
+}
+
+function rememberPlayerName(map: Map<string, string>, id: string, label: string | null | undefined) {
+  if (!id || !label) return;
+  const trimmed = label.trim();
+  if (!trimmed || isPlaceholderPlayerLabel(trimmed, id)) return;
+  const existing = map.get(id);
+  if (existing && !isPlaceholderPlayerLabel(existing, id)) return;
+  map.set(id, trimmed);
+}
+
+function rememberAssetNames(map: Map<string, string>, assets: MflAsset[] | undefined) {
+  if (!assets) return;
+  for (const asset of assets) {
+    if (asset.kind !== 'player') continue;
+    rememberPlayerName(map, asset.id, asset.label);
+  }
+}
+
+/**
+ * Broad player-name index for draft chips: my roster + all franchise rosters + FA
+ * + pending/recent/bait labels + FantasyCalc catalog names.
+ */
+export function buildTradeDraftNameById(input: {
+  myRosterAssets?: MflAsset[];
+  rosterAssetsByFranchiseId?: Record<string, MflAsset[]>;
+  freeAgentAssets?: MflAsset[];
+  valueCatalog?: TradeValueCatalog | null;
+  pending?: TradeRow[];
+  recent?: TradeRow[];
+  tradeBait?: TradeBaitRow[];
+}): Map<string, string> {
+  const map = new Map<string, string>();
+
+  rememberAssetNames(map, input.myRosterAssets);
+  for (const assets of Object.values(input.rosterAssetsByFranchiseId ?? {})) {
+    rememberAssetNames(map, assets);
+  }
+  rememberAssetNames(map, input.freeAgentAssets);
+
+  for (const trade of [...(input.pending ?? []), ...(input.recent ?? [])]) {
+    rememberAssetNames(map, trade.offered);
+    rememberAssetNames(map, trade.requested);
+  }
+  for (const bait of input.tradeBait ?? []) {
+    rememberAssetNames(map, bait.assets);
+  }
+
+  const catalog = input.valueCatalog?.byMflId;
+  if (catalog) {
+    for (const [id, entry] of Object.entries(catalog)) {
+      rememberPlayerName(map, id, entry.name);
+    }
+  }
+
+  return map;
+}
+
+/** Resolve a selected-chip label; never prefer `Player {id}` when a real name exists. */
+export function resolveTradeDraftAssetLabel(id: string, nameById: Map<string, string>, poolAssets: MflAsset[] = []): string {
+  const fromPool = poolAssets.find((asset) => asset.id === id)?.label;
+  if (fromPool && !isPlaceholderPlayerLabel(fromPool, id)) return fromPool;
+  const fromMap = nameById.get(id);
+  if (fromMap && !isPlaceholderPlayerLabel(fromMap, id)) return fromMap;
+  if (fromPool) return fromPool;
+  return `Player ${id}`;
+}
+
+/**
+ * Prefill a counter draft from the primary franchise view: same terms as an outgoing offer.
+ * You offer what you would give; you request what you would get.
+ */
 export function counterDraftFromPendingTrade(
   trade: TradeRow,
   primaryFranchiseId: string | null,
@@ -508,8 +582,8 @@ export function counterDraftFromPendingTrade(
 
   return {
     partnerId: otherId,
-    offeringPlayerIds: perspective.get.filter((asset) => asset.kind === 'player').map((asset) => asset.id),
-    requestingPlayerIds: perspective.give.filter((asset) => asset.kind === 'player').map((asset) => asset.id),
+    offeringPlayerIds: perspective.give.filter((asset) => asset.kind === 'player').map((asset) => asset.id),
+    requestingPlayerIds: perspective.get.filter((asset) => asset.kind === 'player').map((asset) => asset.id),
     revokeTradeId: null,
   };
 }
