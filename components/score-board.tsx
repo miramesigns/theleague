@@ -130,10 +130,14 @@ export function ScoreBoard({
 
         {matchups.length > 0 ? (
           <div className="scoreboard-week-summary" role="list" aria-label="Week matchup summary">
-            {matchups.map((matchup) => {
+            {matchups.map((matchup, index) => {
               const href = `/scores/week/${weekHrefBase}/matchup/${matchup.hrefFranchiseId}`;
               return (
-                <div key={`${matchup.home.teamId}-${matchup.away.teamId}`} role="listitem">
+                <div
+                  key={`${matchup.home.teamId}-${matchup.away.teamId}`}
+                  role="listitem"
+                  className={index % 2 === 0 ? 'scoreboard-week-summary-cell left' : 'scoreboard-week-summary-cell right'}
+                >
                   <MiniMatchupRow matchup={matchup} href={href} />
                 </div>
               );

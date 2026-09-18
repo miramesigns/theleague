@@ -200,22 +200,18 @@ textarea {
 .scoreboard-week-summary {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  column-gap: 20px;
+  column-gap: 0;
   row-gap: 3px;
-  position: relative;
   min-width: 0;
 }
 
-.scoreboard-week-summary::before {
-  content: '';
-  position: absolute;
-  top: 1px;
-  bottom: 1px;
-  left: 50%;
-  width: 1px;
-  /* Same RGB as --line; higher alpha so a 1px rule reads on the translucent banner */
-  background: rgba(148, 163, 184, 0.4);
-  pointer-events: none;
+.scoreboard-week-summary-cell.left {
+  padding-right: 10px;
+  border-right: 1px solid rgba(148, 163, 184, 0.4);
+}
+
+.scoreboard-week-summary-cell.right {
+  padding-left: 10px;
 }
 
 .scoreboard-mini-matchup {
@@ -269,11 +265,13 @@ textarea {
 @media (max-width: 340px) {
   .scoreboard-week-summary {
     grid-template-columns: 1fr;
-    column-gap: 0;
   }
 
-  .scoreboard-week-summary::before {
-    display: none;
+  .scoreboard-week-summary-cell.left,
+  .scoreboard-week-summary-cell.right {
+    padding-left: 0;
+    padding-right: 0;
+    border-right: none;
   }
 }
 
