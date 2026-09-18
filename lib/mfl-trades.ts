@@ -173,6 +173,23 @@ export function franchiseDisplayLabel(input: {
   return name || 'Unknown franchise';
 }
 
+/**
+ * Compact label for dense scoreboard grids.
+ * Prefers franchise abbrev; otherwise falls back to display label (emoji → abbrev/id), truncated when long.
+ */
+export function shortFranchiseLabel(input: {
+  name?: string | null;
+  abbrev?: string | null;
+  id?: string | null;
+  maxLength?: number;
+}): string {
+  const maxLength = input.maxLength ?? 10;
+  const abbrev = (input.abbrev ?? '').trim();
+  const label = abbrev || franchiseDisplayLabel(input);
+  if (label.length <= maxLength) return label;
+  return `${label.slice(0, Math.max(1, maxLength - 1))}…`;
+}
+
 function mflErrorMessage(payload: unknown): string | null {
   return text(record(payload)?.error) || null;
 }

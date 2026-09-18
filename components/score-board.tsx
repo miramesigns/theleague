@@ -1,11 +1,21 @@
 import Link from 'next/link';
 
 import { WeekPicker } from '@/components/week-picker';
-import type { MatchupCard, ScoresPageState } from '@/lib/mfl-scores';
+import type { MatchupCard, MatchupTeam, ScoresPageState } from '@/lib/mfl-scores';
 import { MatchupSummary } from '@/components/matchup-summary';
+import { shortFranchiseLabel } from '@/lib/mfl-trades';
 
 function formatScore(score: number | null): string {
   return score === null ? 'TBD' : score.toFixed(1);
+}
+
+function formatCompactScore(score: number | null): string {
+  if (score === null) {
+    return '–';
+  }
+
+  const rounded = Math.round(score * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 }
 
 function matchupLabel(matchup: MatchupCard): string {
@@ -32,6 +42,15 @@ function teamBadge(teamStatus: MatchupCard['home']['status']): string {
   return 'Final';
 }
 
+function compactTeamLabel(team: MatchupTeam): string {
+  return shortFranchiseLabel({
+    name: team.teamName,
+    abbrev: team.teamAbbrev,
+    id: team.teamId,
+    maxLength: 10,
+  });
+}
+
 function TeamCell({ team }: { team: MatchupCard['home'] }) {
   return (
     <div className="team-card">
@@ -47,6 +66,30 @@ function TeamCell({ team }: { team: MatchupCard['home'] }) {
         <span className="meta">{team.isHome ? 'Home' : 'Away'}</span>
       </div>
     </div>
+  );
+}
+
+function MiniMatchupRow({
+  matchup,
+  href,
+}: {
+  matchup: MatchupCard;
+  href: string;
+}) {
+  const homeLabel = compactTeamLabel(matchup.home);
+  const awayLabel = compactTeamLabel(matchup.away);
+  const scoreText = `${formatCompactScore(matchup.home.score)}–${formatCompactScore(matchup.away.score)}`;
+
+  return (
+    <Link
+      href={href}
+      className={`scoreboard-mini-matchup${matchup.isPrimary ? ' primary' : ''}`}
+      aria-label={`${homeLabel} ${scoreText} ${awayLabel}`}
+    >
+      <span className="scoreboard-mini-a">{homeLabel}</span>
+      <span className="scoreboard-mini-s">{scoreText}</span>
+      <span className="scoreboard-mini-b">{awayLabel}</span>
+    </Link>
   );
 }
 
@@ -68,19 +111,33 @@ export function ScoreBoard({
           ? 'Schedule'
           : 'Live unavailable';
 
+  const weekHrefBase = selectedWeek ?? currentWeek ?? 0;
+
   return (
     <section className="grid scores-view">
       <div className="banner scores-banner scoreboard-banner">
-        <div>
-          <div className="eyebrow">Scores</div>
-          <div className="small muted">{message}</div>
+        <div className="scoreboard-week-row">
+          {currentWeek !== null && selectedWeek !== null && availableWeeks.length > 0 ? (
+            <div className="scoreboard-week-picker">
+              <WeekPicker availableWeeks={availableWeeks} currentWeek={currentWeek} selectedWeek={selectedWeek} />
+            </div>
+          ) : (
+            <div className="small muted">{message}</div>
+          )}
+
+          <span className={`pill scoreboard-feed-pill${source === 'live' ? ' live' : ''}`}>{pillLabel}</span>
         </div>
 
-        <span className="pill scoreboard-feed-pill">{pillLabel}</span>
-
-        {currentWeek !== null && selectedWeek !== null && availableWeeks.length > 0 ? (
-          <div className="scoreboard-week-picker">
-            <WeekPicker availableWeeks={availableWeeks} currentWeek={currentWeek} selectedWeek={selectedWeek} />
+        {matchups.length > 0 ? (
+          <div className="scoreboard-week-summary" role="list" aria-label="Week matchup summary">
+            {matchups.map((matchup) => {
+              const href = `/scores/week/${weekHrefBase}/matchup/${matchup.hrefFranchiseId}`;
+              return (
+                <div key={`${matchup.home.teamId}-${matchup.away.teamId}`} role="listitem">
+                  <MiniMatchupRow matchup={matchup} href={href} />
+                </div>
+              );
+            })}
           </div>
         ) : null}
       </div>
@@ -99,7 +156,7 @@ export function ScoreBoard({
         <div className="matchup-list">
           {matchups.map((matchup, index) => {
             const label = matchup.isPrimary ? 'My matchup' : `Matchup ${index + 1}`;
-            const href = `/scores/week/${selectedWeek ?? currentWeek ?? 0}/matchup/${matchup.hrefFranchiseId}`;
+            const href = `/scores/week/${weekHrefBase}/matchup/${matchup.hrefFranchiseId}`;
 
             return (
               <Link

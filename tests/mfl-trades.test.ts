@@ -6,6 +6,7 @@ import {
   buildTradeDraftNameById,
   counterDraftFromPendingTrade,
   franchiseDisplayLabel,
+  shortFranchiseLabel,
   isIncomingPendingTrade,
   isOutgoingPendingTrade,
   isPlaceholderPlayerLabel,
@@ -211,6 +212,43 @@ test('franchiseDisplayLabel falls back from emoji-only name to abbrev then Franc
       id: '0005',
     }),
     /Unknown/i,
+  );
+});
+
+test('shortFranchiseLabel prefers abbrev and truncates long names', () => {
+  assert.equal(
+    shortFranchiseLabel({
+      name: 'The Ashy Elbows',
+      abbrev: 'Elbows',
+      id: '0004',
+    }),
+    'Elbows',
+  );
+  assert.equal(
+    shortFranchiseLabel({
+      name: '🏆 🏆 🏆 🏆 🏆 🏆 🏆',
+      abbrev: '3-Peat',
+      id: '0005',
+    }),
+    '3-Peat',
+  );
+  assert.equal(
+    shortFranchiseLabel({
+      name: 'Alpha Wolves Forever',
+      abbrev: null,
+      id: '0001',
+      maxLength: 10,
+    }),
+    'Alpha Wol…',
+  );
+  assert.equal(
+    shortFranchiseLabel({
+      name: 'Gas Factory',
+      abbrev: 'U KNOW WHY IM HERE',
+      id: '0007',
+      maxLength: 10,
+    }),
+    'U KNOW WH…',
   );
 });
 
