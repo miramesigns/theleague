@@ -83,10 +83,11 @@ create table if not exists push_sent_notifications (
 
 In production, missing both backends returns a clear configuration error.
 
-### Scheduling (no Vercel Pro required)
+### Scheduling (Vercel Pro primary)
 
-- `vercel.json` keeps a once-daily Hobby cron on `/api/push/poll` (GET with `CRON_SECRET`).
-- `.github/workflows/push-poll.yml` POSTs the same route every 10 minutes. Set repo secrets `APP_URL` and `CRON_SECRET`.
+- **Primary:** `vercel.json` registers a Pro cron every **5 minutes** on `/api/push/poll` (`*/5 * * * *`). Vercel invokes it with `Authorization: Bearer $CRON_SECRET` (GET). Pro allows ≥1/min; 5 min balances latency vs invocation cost.
+- **Optional backup:** `.github/workflows/push-poll.yml` keeps `workflow_dispatch` only (schedule commented out) so it does not double-fire with Vercel. Re-enable the workflow `schedule` only if Vercel cron is unavailable. Repo secrets: `APP_URL`, `CRON_SECRET`.
+- Poll **dedupes** by durable sent-notification ids, so overlapping runners would not re-push the same event — but keep one primary scheduler to avoid wasted MFL polls.
 
 The first successful poll **bootstraps** dedupe (marks current events sent without delivering) so deploy does not flood devices with history.
 
