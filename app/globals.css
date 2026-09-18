@@ -213,7 +213,8 @@ textarea {
   bottom: 1px;
   left: 50%;
   width: 1px;
-  background: var(--line);
+  /* Same family as --line / banner borders; slightly stronger so it reads on the translucent card */
+  background: color-mix(in srgb, var(--line) 55%, rgba(148, 163, 184, 0.55));
   pointer-events: none;
 }
 
