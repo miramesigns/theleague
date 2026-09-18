@@ -362,19 +362,22 @@ test('tradeCardSides uses You get / You give from primary perspective', () => {
   assert.equal(incoming.right.label, 'You give');
   assert.equal(incoming.left.assets.map((a) => a.label).join(' • '), 'Nailor, Jalen • Vele, Devaughn • TeSlaa, Isaac');
   assert.equal(incoming.right.assets[0].label, 'Odunze, Rome');
-  assert.equal(incoming.partnerMeta, 'from 3-Peat');
+  assert.equal(incoming.partnerTitle, 'from 3-Peat');
+  assert.equal(incoming.partnerMeta, null);
 
   const outgoing = tradeCardSides(trade, '0005');
   assert.equal(outgoing.left.label, 'You get');
   assert.equal(outgoing.right.label, 'You give');
   assert.equal(outgoing.left.assets[0].label, 'Odunze, Rome');
   assert.equal(outgoing.right.assets.map((a) => a.label).join(' • '), 'Nailor, Jalen • Vele, Devaughn • TeSlaa, Isaac');
-  assert.equal(outgoing.partnerMeta, 'to The Ashy Elbows');
+  assert.equal(outgoing.partnerTitle, 'to The Ashy Elbows');
+  assert.equal(outgoing.partnerMeta, null);
 
   const neutral = tradeCardSides(trade, '0099');
   assert.equal(neutral.left.label, 'Offers');
   assert.equal(neutral.right.label, 'Asks for');
   assert.equal(neutral.left.franchiseName, '3-Peat');
+  assert.equal(neutral.partnerTitle, null);
   assert.equal(neutral.partnerMeta, 'with The Ashy Elbows');
 });
 

@@ -559,11 +559,23 @@ export type TradeCardSideView = {
   franchiseName?: string;
 };
 
+export type TradeCardSides = {
+  left: TradeCardSideView;
+  right: TradeCardSideView;
+  /**
+   * Prominent other-franchise label for You get / You give cards
+   * (e.g. "from Shadow" / "to Shadow"). Null when franchise names sit on columns.
+   */
+  partnerTitle: string | null;
+  /** Secondary partner hint in the meta row; omitted when partnerTitle already names them. */
+  partnerMeta: string | null;
+};
+
 /** Card copy from the signed-in franchise view: You get / You give, else Offers / Asks for. */
 export function tradeCardSides(
   trade: Pick<TradeRow, 'franchiseId' | 'partnerId' | 'franchiseName' | 'partnerName' | 'offered' | 'requested'>,
   primaryFranchiseId: string | null,
-): { left: TradeCardSideView; right: TradeCardSideView; partnerMeta: string | null } {
+): TradeCardSides {
   const perspective = perspectiveAssetsForTrade({
     franchiseId: trade.franchiseId,
     partnerId: trade.partnerId,
@@ -574,16 +586,20 @@ export function tradeCardSides(
 
   if (perspective.perspective === 'you') {
     const outgoing = Boolean(primaryFranchiseId && trade.franchiseId === primaryFranchiseId);
+    const otherName = outgoing ? trade.partnerName : trade.franchiseName;
     return {
       left: { label: 'You get', assets: perspective.get },
       right: { label: 'You give', assets: perspective.give },
-      partnerMeta: outgoing ? `to ${trade.partnerName}` : `from ${trade.franchiseName}`,
+      // Keep the other franchise scannable at the top of the card (not only in tiny meta).
+      partnerTitle: otherName ? (outgoing ? `to ${otherName}` : `from ${otherName}`) : null,
+      partnerMeta: null,
     };
   }
 
   return {
     left: { label: 'Offers', assets: trade.offered, franchiseName: trade.franchiseName },
     right: { label: 'Asks for', assets: trade.requested },
+    partnerTitle: null,
     partnerMeta: trade.partnerName ? `with ${trade.partnerName}` : null,
   };
 }

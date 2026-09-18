@@ -1482,6 +1482,14 @@ textarea {
   text-align: right;
 }
 
+.trade-partner-title {
+  margin: 0;
+  font-weight: 700;
+  font-size: 1rem;
+  line-height: 1.25;
+  color: #fff;
+}
+
 .trade-franchise {
   font-weight: 700;
   font-size: 0.92rem;
