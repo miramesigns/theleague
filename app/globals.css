@@ -200,18 +200,21 @@ textarea {
 .scoreboard-week-summary {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  column-gap: 0;
+  column-gap: 20px;
   row-gap: 3px;
+  position: relative;
   min-width: 0;
 }
 
-.scoreboard-week-summary > :nth-child(odd) {
-  padding-right: 10px;
-  border-right: 1px solid var(--line);
-}
-
-.scoreboard-week-summary > :nth-child(even) {
-  padding-left: 10px;
+.scoreboard-week-summary::before {
+  content: '';
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  left: 50%;
+  width: 1px;
+  background: var(--line);
+  pointer-events: none;
 }
 
 .scoreboard-mini-matchup {
@@ -265,13 +268,11 @@ textarea {
 @media (max-width: 340px) {
   .scoreboard-week-summary {
     grid-template-columns: 1fr;
+    column-gap: 0;
   }
 
-  .scoreboard-week-summary > :nth-child(odd),
-  .scoreboard-week-summary > :nth-child(even) {
-    padding-left: 0;
-    padding-right: 0;
-    border-right: none;
+  .scoreboard-week-summary::before {
+    display: none;
   }
 }
 
