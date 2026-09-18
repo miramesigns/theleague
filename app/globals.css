@@ -216,8 +216,8 @@ textarea {
 
 .scoreboard-mini-matchup {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(5.5em, auto) minmax(0, 1fr);
-  column-gap: 6px;
+  grid-template-columns: minmax(0, 1fr) minmax(6em, auto) minmax(0, 1fr);
+  column-gap: 8px;
   align-items: center;
   min-width: 0;
   font-size: 10px;
@@ -255,8 +255,8 @@ textarea {
 }
 
 .scoreboard-mini-s {
-  min-width: 5.5em;
-  padding-inline: 2px;
+  min-width: 6em;
+  padding-inline: 4px;
   text-align: center;
   font-variant-numeric: tabular-nums;
   color: #fff;
