@@ -5,10 +5,12 @@ import { useMemo, useRef, useState } from 'react';
 
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { CompletedTradeCard, TradeCard } from '@/components/trade-card';
-import type { MflAsset } from '@/lib/mfl-assets';
+import { partitionTradePickerAssets, type MflAsset } from '@/lib/mfl-assets';
 import {
   amendDraftFromPendingTrade,
   buildTradeDraftNameById,
+  buildTradeOfferPool,
+  buildTradeRequestPool,
   counterDraftFromPendingTrade,
   isIncomingPendingTrade,
   isOutgoingPendingTrade,
@@ -46,6 +48,8 @@ function PlayerAssetPicker({
   searchPlaceholder: string;
 }) {
   const [query, setQuery] = useState('');
+  const { picks, players } = useMemo(() => partitionTradePickerAssets(assets), [assets]);
+
   const selected = useMemo(
     () =>
       selectedIds.map((id) => {
@@ -53,18 +57,42 @@ function PlayerAssetPicker({
         const resolvedLabel = resolveTradeDraftAssetLabel(id, nameById, assets);
         return fromPool
           ? { ...fromPool, label: resolvedLabel }
-          : { kind: 'player' as const, id, label: resolvedLabel };
+          : { kind: 'unknown' as const, id, label: resolvedLabel };
       }),
     [assets, nameById, selectedIds],
   );
 
-  const available = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return assets
-      .filter((asset) => !selectedIds.includes(asset.id))
-      .filter((asset) => !needle || asset.label.toLowerCase().includes(needle) || asset.id.includes(needle))
-      .slice(0, 40);
-  }, [assets, query, selectedIds]);
+  const needle = query.trim().toLowerCase();
+  const matches = (asset: MflAsset) =>
+    !needle || asset.label.toLowerCase().includes(needle) || asset.id.includes(needle);
+
+  const availablePicks = useMemo(
+    () => picks.filter((asset) => !selectedIds.includes(asset.id)).filter(matches),
+    // matches depends on needle/query
+    [picks, selectedIds, query],
+  );
+  const availablePlayers = useMemo(
+    () => players.filter((asset) => !selectedIds.includes(asset.id)).filter(matches),
+    [players, selectedIds, query],
+  );
+
+  const renderOptionButton = (asset: MflAsset) => {
+    const fcValue = valueCatalog?.byMflId[asset.id]?.value;
+    return (
+      <button
+        key={asset.id}
+        type="button"
+        className="button ghost trade-asset-option"
+        onClick={() => {
+          onChange([...selectedIds, asset.id]);
+          setQuery('');
+        }}
+      >
+        {asset.label}
+        {typeof fcValue === 'number' ? ` · ${formatValueNumber(fcValue)}` : ''}
+      </button>
+    );
+  };
 
   return (
     <div>
@@ -73,6 +101,19 @@ function PlayerAssetPicker({
         <p className="muted small">{emptyMessage}</p>
       ) : (
         <div className="trade-asset-picker">
+          {/* Draft picks stay above the player list so they are not buried under a long roster/FA scroll. */}
+          {availablePicks.length > 0 ? (
+            <div className="trade-asset-group">
+              <div className="small muted trade-asset-group-label">Draft picks</div>
+              <div className="trade-asset-search-results">{availablePicks.map(renderOptionButton)}</div>
+            </div>
+          ) : picks.length > 0 && needle ? (
+            <div className="trade-asset-group">
+              <div className="small muted trade-asset-group-label">Draft picks</div>
+              <p className="muted small">No matching picks.</p>
+            </div>
+          ) : null}
+
           <input
             className="field"
             value={query}
@@ -80,50 +121,45 @@ function PlayerAssetPicker({
             placeholder={searchPlaceholder}
             aria-label={label}
           />
-          {query.trim() || available.length <= 12 ? (
-            <div className="trade-asset-search-results">
-              {available.map((asset) => {
-                const fcValue = valueCatalog?.byMflId[asset.id]?.value;
-                return (
-                  <button
-                    key={asset.id}
-                    type="button"
-                    className="button ghost trade-asset-option"
-                    onClick={() => {
-                      onChange([...selectedIds, asset.id]);
-                      setQuery('');
-                    }}
-                  >
-                    {asset.label}
-                    {typeof fcValue === 'number' ? ` · ${formatValueNumber(fcValue)}` : ''}
-                  </button>
-                );
-              })}
-              {available.length === 0 ? <p className="muted small">No matching players.</p> : null}
+
+          {players.length > 0 ? (
+            <div className="trade-asset-group">
+              <div className="small muted trade-asset-group-label">Players</div>
+              {query.trim() || availablePlayers.length <= 12 ? (
+                <div className="trade-asset-search-results">
+                  {availablePlayers.map(renderOptionButton)}
+                  {availablePlayers.length === 0 ? <p className="muted small">No matching players.</p> : null}
+                </div>
+              ) : (
+                <select
+                  className="field"
+                  value=""
+                  onChange={(event) => {
+                    const id = event.target.value;
+                    if (id) onChange([...selectedIds, id]);
+                    event.target.value = '';
+                  }}
+                >
+                  <option value="">Select a player…</option>
+                  {players
+                    .filter((asset) => !selectedIds.includes(asset.id))
+                    .map((asset) => {
+                      const fcValue = valueCatalog?.byMflId[asset.id]?.value;
+                      return (
+                        <option key={asset.id} value={asset.id}>
+                          {asset.label}{typeof fcValue === 'number' ? ` · ${formatValueNumber(fcValue)}` : ''}
+                        </option>
+                      );
+                    })}
+                </select>
+              )}
             </div>
-          ) : (
-            <select
-              className="field"
-              value=""
-              onChange={(event) => {
-                const id = event.target.value;
-                if (id) onChange([...selectedIds, id]);
-                event.target.value = '';
-              }}
-            >
-              <option value="">Select a player…</option>
-              {assets
-                .filter((asset) => !selectedIds.includes(asset.id))
-                .map((asset) => {
-                  const fcValue = valueCatalog?.byMflId[asset.id]?.value;
-                  return (
-                    <option key={asset.id} value={asset.id}>
-                      {asset.label}{typeof fcValue === 'number' ? ` · ${formatValueNumber(fcValue)}` : ''}
-                    </option>
-                  );
-                })}
-            </select>
-          )}
+          ) : null}
+
+          {availablePicks.length === 0 && availablePlayers.length === 0 && picks.length === 0 && players.length === 0 ? (
+            <p className="muted small">No matching assets.</p>
+          ) : null}
+
           {selected.length > 0 ? (
             <div className="trade-selected-assets">
               {selected.map((asset) => {
@@ -194,17 +230,14 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
       state.valueCatalog,
     ],
   );
-  const requestPool = useMemo(() => {
-    const partnerRoster = state.rosterAssetsByFranchiseId[partnerId] ?? [];
-    const seen = new Set<string>();
-    const pool: MflAsset[] = [];
-    for (const asset of [...partnerRoster, ...state.freeAgentAssets]) {
-      if (seen.has(asset.id)) continue;
-      seen.add(asset.id);
-      pool.push(asset);
-    }
-    return pool;
-  }, [partnerId, state.freeAgentAssets, state.rosterAssetsByFranchiseId]);
+  const offerPool = useMemo(
+    () => buildTradeOfferPool(state.myRosterAssets),
+    [state.myRosterAssets],
+  );
+  const requestPool = useMemo(
+    () => buildTradeRequestPool(state.rosterAssetsByFranchiseId, partnerId),
+    [partnerId, state.rosterAssetsByFranchiseId],
+  );
 
   const draftValue = useMemo(() => {
     const catalog = state.valueCatalog?.byMflId;
@@ -458,10 +491,9 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
               onChange={(event) => {
                 const nextPartner = event.target.value;
                 setPartnerId(nextPartner);
-                const nextPoolIds = new Set([
-                  ...(state.rosterAssetsByFranchiseId[nextPartner] ?? []).map((asset) => asset.id),
-                  ...state.freeAgentAssets.map((asset) => asset.id),
-                ]);
+                const nextPoolIds = new Set(
+                  (state.rosterAssetsByFranchiseId[nextPartner] ?? []).map((asset) => asset.id),
+                );
                 setRequesting((current) => current.filter((id) => nextPoolIds.has(id)));
               }}
             >
@@ -473,13 +505,13 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
 
           <PlayerAssetPicker
             label="You offer"
-            assets={state.myRosterAssets}
+            assets={offerPool}
             selectedIds={offering}
             onChange={setOffering}
             valueCatalog={state.valueCatalog}
             nameById={nameById}
             emptyMessage="Sign in with a roster to pick assets."
-            searchPlaceholder="Search your roster…"
+            searchPlaceholder="Search your players…"
           />
 
           <PlayerAssetPicker
@@ -489,8 +521,8 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
             onChange={setRequesting}
             valueCatalog={state.valueCatalog}
             nameById={nameById}
-            emptyMessage="Partner roster / free agents unavailable."
-            searchPlaceholder="Search partner roster or free agents…"
+            emptyMessage="Partner roster unavailable."
+            searchPlaceholder="Search their players…"
           />
 
           <div className="trade-value-help trade-value-help-draft">
@@ -511,7 +543,7 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
               </>
             ) : (
               <p className="small muted" style={{ margin: 0 }}>
-                Select players to see FantasyCalc side totals.
+                Select assets to see FantasyCalc side totals.
               </p>
             )}
             <div className="trade-value-links">

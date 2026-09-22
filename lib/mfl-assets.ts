@@ -6,7 +6,101 @@ export type MflAsset =
   | { kind: 'draftPick'; id: string; label: string; round: string; pick: string }
   | { kind: 'unknown'; id: string; label: string };
 
-export function parseMflAssetToken(token: string, playerNames: Map<string, string> = new Map()): MflAsset {
+export type MflAssetParseOptions = {
+  playerNames?: Map<string, string>;
+  franchiseNames?: Map<string, string>;
+  /** Optional season year prefix for current-year DP_ labels. */
+  draftYear?: string | null;
+};
+
+/** 1 → 1st, 2 → 2nd, 3 → 3rd, … */
+export function formatRoundOrdinal(round: string | number): string {
+  const n = typeof round === 'number' ? round : Number.parseInt(String(round), 10);
+  if (!Number.isFinite(n) || n <= 0) return `R${round}`;
+  const mod100 = n % 100;
+  const mod10 = n % 10;
+  const suffix =
+    mod100 >= 11 && mod100 <= 13 ? 'th' : mod10 === 1 ? 'st' : mod10 === 2 ? 'nd' : mod10 === 3 ? 'rd' : 'th';
+  return `${n}${suffix}`;
+}
+
+/** Human label like `2027 2nd (Shadow)`. */
+export function formatFuturePickLabel(year: string, round: string, franchiseLabel?: string | null): string {
+  const roundLabel = formatRoundOrdinal(round);
+  const team = (franchiseLabel ?? '').trim();
+  return team ? `${year} ${roundLabel} (${team})` : `${year} ${roundLabel}`;
+}
+
+/**
+ * Current-year draft pick label.
+ * MFL encodes DP_{roundIndex}_{pick} with a 0-based round index.
+ */
+export function formatDraftPickLabel(round: string, pick: string, draftYear?: string | null): string {
+  const roundIndex = Number.parseInt(round, 10);
+  const displayRound = Number.isFinite(roundIndex) ? formatRoundOrdinal(roundIndex + 1) : `R${round}`;
+  const yearPrefix = draftYear?.trim() ? `${draftYear.trim()} ` : '';
+  return `${yearPrefix}${displayRound} (#${pick})`;
+}
+
+export function buildFuturePickId(franchiseId: string, year: string, round: string): string {
+  return `FP_${franchiseId.padStart(4, '0')}_${year}_${round}`;
+}
+
+export function buildDraftPickId(round: string, pick: string): string {
+  return `DP_${round}_${pick}`;
+}
+
+export function buildFuturePickAsset(input: {
+  originalFranchiseId: string;
+  year: string;
+  round: string;
+  franchiseNames?: Map<string, string>;
+}): MflAsset {
+  const franchiseId = input.originalFranchiseId.padStart(4, '0');
+  const teamName =
+    input.franchiseNames?.get(franchiseId) ||
+    input.franchiseNames?.get(input.originalFranchiseId) ||
+    `Franchise ${franchiseId}`;
+  return {
+    kind: 'futurePick',
+    id: buildFuturePickId(franchiseId, input.year, input.round),
+    franchiseId,
+    year: input.year,
+    round: input.round,
+    label: formatFuturePickLabel(input.year, input.round, teamName),
+  };
+}
+
+export function buildDraftPickAsset(round: string, pick: string, draftYear?: string | null): MflAsset {
+  return {
+    kind: 'draftPick',
+    id: buildDraftPickId(round, pick),
+    round,
+    pick,
+    label: formatDraftPickLabel(round, pick, draftYear),
+  };
+}
+
+export function isSelectableTradeAsset(asset: MflAsset): boolean {
+  return asset.kind === 'player' || asset.kind === 'futurePick' || asset.kind === 'draftPick';
+}
+
+function resolveParseOptions(
+  playerNamesOrOptions: Map<string, string> | MflAssetParseOptions = new Map(),
+): MflAssetParseOptions {
+  return playerNamesOrOptions instanceof Map
+    ? { playerNames: playerNamesOrOptions }
+    : playerNamesOrOptions;
+}
+
+export function parseMflAssetToken(
+  token: string,
+  playerNamesOrOptions: Map<string, string> | MflAssetParseOptions = new Map(),
+): MflAsset {
+  const options = resolveParseOptions(playerNamesOrOptions);
+  const playerNames = options.playerNames ?? new Map<string, string>();
+  const franchiseNames = options.franchiseNames ?? new Map<string, string>();
+
   const id = token.trim();
   if (!id) {
     return { kind: 'unknown', id: '', label: 'Unknown asset' };
@@ -15,13 +109,14 @@ export function parseMflAssetToken(token: string, playerNames: Map<string, strin
   const futurePick = /^FP_(\d{4})_(\d{4})_(\d+)$/i.exec(id);
   if (futurePick) {
     const [, franchiseId, year, round] = futurePick;
+    const teamName = franchiseNames.get(franchiseId) || `Franchise ${franchiseId}`;
     return {
       kind: 'futurePick',
       id,
       franchiseId,
       year,
       round,
-      label: `${year} R${round} (from ${franchiseId})`,
+      label: formatFuturePickLabel(year, round, teamName),
     };
   }
 
@@ -33,7 +128,7 @@ export function parseMflAssetToken(token: string, playerNames: Map<string, strin
       id,
       round,
       pick,
-      label: `Draft pick R${round}.${pick}`,
+      label: formatDraftPickLabel(round, pick, options.draftYear),
     };
   }
 
@@ -48,11 +143,92 @@ export function parseMflAssetToken(token: string, playerNames: Map<string, strin
   return { kind: 'unknown', id, label: id };
 }
 
-export function parseMflAssetList(value: string | null | undefined, playerNames: Map<string, string> = new Map()): MflAsset[] {
-  return splitMflIdList(value).map((token) => parseMflAssetToken(token, playerNames));
+export function parseMflAssetList(
+  value: string | null | undefined,
+  playerNamesOrOptions: Map<string, string> | MflAssetParseOptions = new Map(),
+): MflAsset[] {
+  const options = resolveParseOptions(playerNamesOrOptions);
+  return splitMflIdList(value).map((token) => parseMflAssetToken(token, options));
 }
 
 export function formatMflAssetLabels(assets: MflAsset[]): string {
   if (assets.length === 0) return '—';
   return assets.map((asset) => asset.label).join(' • ');
+}
+
+export function isDraftPickAsset(asset: MflAsset): boolean {
+  return asset.kind === 'futurePick' || asset.kind === 'draftPick';
+}
+
+/** Split tradeable assets into draft picks vs roster players (unknowns ignored). */
+export function partitionTradePickerAssets(assets: MflAsset[]): {
+  picks: MflAsset[];
+  players: MflAsset[];
+} {
+  const picks: MflAsset[] = [];
+  const players: MflAsset[] = [];
+  for (const asset of assets) {
+    if (asset.kind === 'futurePick' || asset.kind === 'draftPick') picks.push(asset);
+    else if (asset.kind === 'player') players.push(asset);
+  }
+  return {
+    picks: sortTradePickerPicks(picks),
+    players: [...players].sort((left, right) => left.label.localeCompare(right.label)),
+  };
+}
+
+function sortTradePickerPicks(assets: MflAsset[]): MflAsset[] {
+  return [...assets].sort((left, right) => {
+    if (left.kind === 'draftPick' && right.kind === 'futurePick') return -1;
+    if (left.kind === 'futurePick' && right.kind === 'draftPick') return 1;
+    if (left.kind === 'futurePick' && right.kind === 'futurePick') {
+      const yearDiff = left.year.localeCompare(right.year);
+      if (yearDiff !== 0) return yearDiff;
+      const roundDiff = Number(left.round) - Number(right.round);
+      if (roundDiff !== 0) return roundDiff;
+    }
+    if (left.kind === 'draftPick' && right.kind === 'draftPick') {
+      const roundDiff = Number(left.round) - Number(right.round);
+      if (roundDiff !== 0) return roundDiff;
+      const pickDiff = Number(left.pick) - Number(right.pick);
+      if (pickDiff !== 0) return pickDiff;
+    }
+    return left.label.localeCompare(right.label);
+  });
+}
+
+/**
+ * Picker order: draft picks first (visible without scrolling past the roster),
+ * then roster players A–Z.
+ */
+export function sortTradePickerAssets(assets: MflAsset[]): MflAsset[] {
+  const { picks, players } = partitionTradePickerAssets(assets);
+  return [...picks, ...players];
+}
+
+/** Players A–Z, then current-year picks, then future picks (history / summaries). */
+export function sortTradeAssets(assets: MflAsset[]): MflAsset[] {
+  return [...assets].sort((left, right) => {
+    const rank = (asset: MflAsset) => {
+      if (asset.kind === 'player') return 0;
+      if (asset.kind === 'draftPick') return 1;
+      if (asset.kind === 'futurePick') return 2;
+      return 3;
+    };
+    const rankDiff = rank(left) - rank(right);
+    if (rankDiff !== 0) return rankDiff;
+    if (left.kind === 'futurePick' && right.kind === 'futurePick') {
+      const yearDiff = left.year.localeCompare(right.year);
+      if (yearDiff !== 0) return yearDiff;
+      const roundDiff = Number(left.round) - Number(right.round);
+      if (roundDiff !== 0) return roundDiff;
+    }
+    if (left.kind === 'draftPick' && right.kind === 'draftPick') {
+      const roundDiff = Number(left.round) - Number(right.round);
+      if (roundDiff !== 0) return roundDiff;
+      const pickDiff = Number(left.pick) - Number(right.pick);
+      if (pickDiff !== 0) return pickDiff;
+    }
+    return left.label.localeCompare(right.label);
+  });
 }

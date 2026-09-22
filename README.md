@@ -12,7 +12,7 @@ A phone-first Next.js App Router companion for a MyFantasyLeague league.
 - Server-side login route architecture that keeps only an `MFL_USER_ID` httpOnly session cookie.
 - Real `Waivers` board (free agents + FAAB rules + recent claims) and `Trades` board (history/pending/bait + draft offer UI).
 - Pending trades show a compact FantasyCalc dynasty value read (cached ≤1h) plus outbound KeepTradeCut / FantasyCalc calculator links. Owners can accept / decline incoming offers, cancel or amend+resend outgoing offers, and propose new trades after confirm (live MFL `tradeProposal` / `tradeResponse`).
-- Draft offers use player search/select (your roster / partner roster + FAs) with live FantasyCalc totals; Counter prefills the draft from a pending offer; Amend & resend prefills an outgoing offer then revokes+reproposes.
+- Draft offers use asset search/select (your rostered players + owned draft picks / partner rostered players + owned picks). Draft picks are grouped above players. Free agents are not tradeable here (use FA/waivers). Counter prefills the draft from a pending offer; Amend & resend prefills an outgoing offer then revokes+reproposes.
 - In-app `Notifications` center derived from MFL transactions / live scores / pending trades, with optional Web Push that mirrors MFL email-style alerts (trades, waivers, IR/taxi, lineup locks, scores).
 - `More`, `Roster`, `Standings`, and `All Rosters` pages.
 - Manifest and SVG icons for PWA plumbing.
@@ -24,7 +24,7 @@ A phone-first Next.js App Router companion for a MyFantasyLeague league.
 | Scores / Rosters / Standings / Lineup editor | Yes | Lineup yes | Lineup submit via `/api/mfl/lineup` after confirm dialog |
 | Free agents / FAAB rules / recent waivers | Yes (`freeAgents`, `league`, `transactions`) | Claim draft yes | `/api/waivers/claim` requires `confirmed: true` and currently returns **501 stub** |
 | Pending waivers | Yes when session cookie present (`pendingWaivers`) | — | Same claim stub |
-| Trades history / trade bait | Yes (`transactions` TRADE, `tradeBait`) | Propose draft yes | `/api/trades/propose` requires `confirmed: true` then live MFL `tradeProposal` (optional amend: revoke then propose) |
+| Trades history / trade bait | Yes (`transactions` TRADE, `tradeBait`, `futureDraftPicks`; `assets` when signed in) | Propose draft yes (players + picks) | `/api/trades/propose` requires `confirmed: true` then live MFL `tradeProposal` (optional amend: revoke then propose) |
 | Pending trades | Yes when session cookie present (`pendingTrades`) | Accept / Decline / Cancel / Amend | `/api/trades/respond` requires `confirmed: true` then live MFL `tradeResponse` (`accept` / `reject` / `revoke`) |
 | Notifications | Yes (transactions + pending trades + live scoring) | Category prefs + Web Push subscribe | Background poll (`/api/push/poll`) discovers new events and sends Web Push with durable dedupe |
 | Legacy `/api/lineup/import` | — | — | Still a **501** ask-before-send stub |
