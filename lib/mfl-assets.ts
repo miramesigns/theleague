@@ -2,18 +2,32 @@ import { splitMflIdList } from './mfl-format.ts';
 
 export type MflAsset =
   | { kind: 'player'; id: string; label: string }
-  | { kind: 'futurePick'; id: string; label: string; franchiseId: string; year: string; round: string }
+  | {
+      kind: 'futurePick';
+      id: string;
+      label: string;
+      franchiseId: string;
+      year: string;
+      round: string;
+      /** 1-based slot within the round (MFL board row order). */
+      pick: string;
+    }
   | { kind: 'draftPick'; id: string; label: string; round: string; pick: string }
   | { kind: 'unknown'; id: string; label: string };
 
 export type MflAssetParseOptions = {
   playerNames?: Map<string, string>;
   franchiseNames?: Map<string, string>;
-  /** Optional season year prefix for current-year DP_ labels. */
+  /**
+   * Franchise ids in MFL draft-board order (row 1 = pick 1 within each round).
+   * Defaults to numeric franchise id when omitted (0004 → pick 4).
+   */
+  draftOrderFranchiseIds?: string[];
+  /** Optional season year for current-year DP_ labels. */
   draftYear?: string | null;
 };
 
-/** 1 → 1st, 2 → 2nd, 3 → 3rd, … */
+/** 1 → 1st, 2 → 2nd, 3 → 3rd, … (kept for non-pick UI copy). */
 export function formatRoundOrdinal(round: string | number): string {
   const n = typeof round === 'number' ? round : Number.parseInt(String(round), 10);
   if (!Number.isFinite(n) || n <= 0) return `R${round}`;
@@ -24,22 +38,70 @@ export function formatRoundOrdinal(round: string | number): string {
   return `${n}${suffix}`;
 }
 
-/** Human label like `2027 2nd (Shadow)`. */
-export function formatFuturePickLabel(year: string, round: string, franchiseLabel?: string | null): string {
-  const roundLabel = formatRoundOrdinal(round);
-  const team = (franchiseLabel ?? '').trim();
-  return team ? `${year} ${roundLabel} (${team})` : `${year} ${roundLabel}`;
+/**
+ * MFL future-pick board slot for an original franchise.
+ * Row order within each round IS the pick number; for this league that matches
+ * franchise id order (0001 → pick 1 … 0012 → pick 12). Prefer an explicit
+ * draftOrderFranchiseIds list when available.
+ */
+export function draftPickSlotForFranchise(
+  originalFranchiseId: string,
+  draftOrderFranchiseIds?: string[] | null,
+): number {
+  const padded = originalFranchiseId.padStart(4, '0');
+  const numeric = Number.parseInt(padded, 10);
+  const numericSlot = Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
+
+  if (draftOrderFranchiseIds && draftOrderFranchiseIds.length > 0) {
+    // Incomplete franchise maps (e.g. only teams present in a fixture) invent
+    // wrong slots — only trust the list when it covers the franchise id space.
+    const maxId = Math.max(
+      ...draftOrderFranchiseIds.map((id) => Number.parseInt(id.padStart(4, '0'), 10) || 0),
+    );
+    const orderLooksComplete = maxId > 0 && draftOrderFranchiseIds.length >= maxId;
+    if (orderLooksComplete) {
+      const index = draftOrderFranchiseIds.findIndex(
+        (id) => id.padStart(4, '0') === padded || id === originalFranchiseId,
+      );
+      if (index >= 0) return index + 1;
+    }
+  }
+
+  return numericSlot;
+}
+
+/**
+ * Compact MFL-board label: `Rd 1, pick 4 (2027)`.
+ * Optional original-team hint: `Rd 1, pick 4 (2027 · Ashy Elbows)`.
+ */
+export function formatFuturePickLabel(
+  year: string,
+  round: string,
+  pickSlot: string | number,
+  originalFranchiseLabel?: string | null,
+): string {
+  const roundNumber = Number.parseInt(String(round), 10);
+  const slotNumber = typeof pickSlot === 'number' ? pickSlot : Number.parseInt(String(pickSlot), 10);
+  const roundPart = Number.isFinite(roundNumber) && roundNumber > 0 ? String(roundNumber) : String(round);
+  const slotPart = Number.isFinite(slotNumber) && slotNumber > 0 ? String(slotNumber) : String(pickSlot);
+  const team = (originalFranchiseLabel ?? '').trim();
+  const yearPart = year.trim();
+  if (team && yearPart) return `Rd ${roundPart}, pick ${slotPart} (${yearPart} · ${team})`;
+  if (yearPart) return `Rd ${roundPart}, pick ${slotPart} (${yearPart})`;
+  if (team) return `Rd ${roundPart}, pick ${slotPart} (${team})`;
+  return `Rd ${roundPart}, pick ${slotPart}`;
 }
 
 /**
  * Current-year draft pick label.
- * MFL encodes DP_{roundIndex}_{pick} with a 0-based round index.
+ * MFL encodes DP_{roundIndex}_{pick} with a 0-based round index; pick is already the slot.
  */
 export function formatDraftPickLabel(round: string, pick: string, draftYear?: string | null): string {
   const roundIndex = Number.parseInt(round, 10);
-  const displayRound = Number.isFinite(roundIndex) ? formatRoundOrdinal(roundIndex + 1) : `R${round}`;
-  const yearPrefix = draftYear?.trim() ? `${draftYear.trim()} ` : '';
-  return `${yearPrefix}${displayRound} (#${pick})`;
+  const displayRound = Number.isFinite(roundIndex) ? roundIndex + 1 : Number.parseInt(round, 10);
+  const roundPart = Number.isFinite(displayRound) && displayRound > 0 ? String(displayRound) : String(round);
+  const yearPart = draftYear?.trim();
+  return yearPart ? `Rd ${roundPart}, pick ${pick} (${yearPart})` : `Rd ${roundPart}, pick ${pick}`;
 }
 
 export function buildFuturePickId(franchiseId: string, year: string, round: string): string {
@@ -55,19 +117,25 @@ export function buildFuturePickAsset(input: {
   year: string;
   round: string;
   franchiseNames?: Map<string, string>;
+  draftOrderFranchiseIds?: string[];
+  /** When true, append a short original-team hint after the year. Default false. */
+  includeOriginalTeam?: boolean;
 }): MflAsset {
   const franchiseId = input.originalFranchiseId.padStart(4, '0');
-  const teamName =
-    input.franchiseNames?.get(franchiseId) ||
-    input.franchiseNames?.get(input.originalFranchiseId) ||
-    `Franchise ${franchiseId}`;
+  const pickSlot = draftPickSlotForFranchise(franchiseId, input.draftOrderFranchiseIds);
+  const teamName = input.includeOriginalTeam
+    ? input.franchiseNames?.get(franchiseId) ||
+      input.franchiseNames?.get(input.originalFranchiseId) ||
+      null
+    : null;
   return {
     kind: 'futurePick',
     id: buildFuturePickId(franchiseId, input.year, input.round),
     franchiseId,
     year: input.year,
     round: input.round,
-    label: formatFuturePickLabel(input.year, input.round, teamName),
+    pick: String(pickSlot),
+    label: formatFuturePickLabel(input.year, input.round, pickSlot, teamName),
   };
 }
 
@@ -99,7 +167,6 @@ export function parseMflAssetToken(
 ): MflAsset {
   const options = resolveParseOptions(playerNamesOrOptions);
   const playerNames = options.playerNames ?? new Map<string, string>();
-  const franchiseNames = options.franchiseNames ?? new Map<string, string>();
 
   const id = token.trim();
   if (!id) {
@@ -109,14 +176,15 @@ export function parseMflAssetToken(
   const futurePick = /^FP_(\d{4})_(\d{4})_(\d+)$/i.exec(id);
   if (futurePick) {
     const [, franchiseId, year, round] = futurePick;
-    const teamName = franchiseNames.get(franchiseId) || `Franchise ${franchiseId}`;
+    const pickSlot = draftPickSlotForFranchise(franchiseId, options.draftOrderFranchiseIds);
     return {
       kind: 'futurePick',
       id,
       franchiseId,
       year,
       round,
-      label: formatFuturePickLabel(year, round, teamName),
+      pick: String(pickSlot),
+      label: formatFuturePickLabel(year, round, pickSlot),
     };
   }
 
@@ -186,6 +254,8 @@ function sortTradePickerPicks(assets: MflAsset[]): MflAsset[] {
       if (yearDiff !== 0) return yearDiff;
       const roundDiff = Number(left.round) - Number(right.round);
       if (roundDiff !== 0) return roundDiff;
+      const pickDiff = Number(left.pick) - Number(right.pick);
+      if (pickDiff !== 0) return pickDiff;
     }
     if (left.kind === 'draftPick' && right.kind === 'draftPick') {
       const roundDiff = Number(left.round) - Number(right.round);
@@ -222,6 +292,8 @@ export function sortTradeAssets(assets: MflAsset[]): MflAsset[] {
       if (yearDiff !== 0) return yearDiff;
       const roundDiff = Number(left.round) - Number(right.round);
       if (roundDiff !== 0) return roundDiff;
+      const pickDiff = Number(left.pick) - Number(right.pick);
+      if (pickDiff !== 0) return pickDiff;
     }
     if (left.kind === 'draftPick' && right.kind === 'draftPick') {
       const roundDiff = Number(left.round) - Number(right.round);

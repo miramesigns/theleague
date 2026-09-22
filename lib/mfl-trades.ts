@@ -287,6 +287,12 @@ function franchiseDirectory(payload: unknown): Map<string, string> {
   );
 }
 
+/** MFL future-pick board order: franchise ids ascending (0001 = pick 1 in every round). */
+export function draftOrderFranchiseIdsFromLeague(payload: unknown): string[] {
+  const names = franchiseDirectory(payload);
+  return [...names.keys()].sort((left, right) => left.localeCompare(right));
+}
+
 function franchiseOptions(payload: unknown, primaryFranchiseId: string | null): TradeFranchiseOption[] {
   const names = franchiseDirectory(payload);
   return [...names.entries()]
@@ -298,6 +304,7 @@ export function parseCompletedTrades(
   transactionsPayload: unknown,
   playersPayload: unknown,
   names: Map<string, string>,
+  draftOrderFranchiseIds: string[] = [],
 ): TradeRow[] {
   const players = playerNames(playersPayload);
   const transactions = records(record(record(transactionsPayload)?.transactions)?.transaction);
@@ -307,8 +314,8 @@ export function parseCompletedTrades(
     .map((entry, index) => {
       const franchiseId = normalizeFranchiseId(entryValue(entry, 'franchise', 'franchise1'));
       const partnerId = normalizeFranchiseId(entryValue(entry, 'franchise2', 'partner'));
-      const offered = parseMflAssetList(text(entryValue(entry, 'franchise1_gave_up')), { playerNames: players, franchiseNames: names });
-      const requested = parseMflAssetList(text(entryValue(entry, 'franchise2_gave_up')), { playerNames: players, franchiseNames: names });
+      const offered = parseMflAssetList(text(entryValue(entry, 'franchise1_gave_up')), { playerNames: players, franchiseNames: names, draftOrderFranchiseIds });
+      const requested = parseMflAssetList(text(entryValue(entry, 'franchise2_gave_up')), { playerNames: players, franchiseNames: names, draftOrderFranchiseIds });
       const timestamp = numberValue(entryValue(entry, 'timestamp')) ?? 0;
       const expiresAt = numberValue(entryValue(entry, 'expires'));
       const franchiseName = resolveFranchiseName(names, franchiseId);
@@ -339,6 +346,7 @@ export function parsePendingTrades(
   pendingPayload: unknown,
   playersPayload: unknown,
   names: Map<string, string>,
+  draftOrderFranchiseIds: string[] = [],
 ): TradeRow[] {
   if (!pendingPayload || mflErrorMessage(pendingPayload)) return [];
 
@@ -374,11 +382,11 @@ export function parsePendingTrades(
     );
     const offered = parseMflAssetList(
       text(entryValue(entry, 'franchise1_gave_up', 'will_give_up', 'offered', 'gives')),
-      { playerNames: players, franchiseNames: names },
+      { playerNames: players, franchiseNames: names, draftOrderFranchiseIds },
     );
     const requested = parseMflAssetList(
       text(entryValue(entry, 'franchise2_gave_up', 'will_receive', 'requested', 'gets')),
-      { playerNames: players, franchiseNames: names },
+      { playerNames: players, franchiseNames: names, draftOrderFranchiseIds },
     );
     const timestamp = numberValue(entryValue(entry, 'timestamp')) ?? 0;
     const expiresAt = numberValue(entryValue(entry, 'expires', 'expiration'));
@@ -413,6 +421,7 @@ export function parseTradeBait(
   baitPayload: unknown,
   playersPayload: unknown,
   names: Map<string, string>,
+  draftOrderFranchiseIds: string[] = [],
 ): TradeBaitRow[] {
   if (!baitPayload || mflErrorMessage(baitPayload)) return [];
 
@@ -426,7 +435,7 @@ export function parseTradeBait(
     return franchises.flatMap((franchise, franchiseIndex) => {
       const franchiseId = text(franchise.id);
       const franchiseName = names.get(franchiseId) || text(franchise.name) || `Franchise ${franchiseId}`;
-      const assets = parseMflAssetList(text(franchise.willGiveUp ?? franchise.will_give_up ?? franchise.assets ?? franchise.player), { playerNames: players, franchiseNames: names });
+      const assets = parseMflAssetList(text(franchise.willGiveUp ?? franchise.will_give_up ?? franchise.assets ?? franchise.player), { playerNames: players, franchiseNames: names, draftOrderFranchiseIds });
       const comments = text(franchise.comments ?? franchise.comment) || null;
       if (assets.length === 0 && !comments) return [];
       return [{
@@ -443,7 +452,7 @@ export function parseTradeBait(
   return flat.map((entry, index) => {
     const franchiseId = text(entry.franchise ?? entry.franchise_id);
     const franchiseName = names.get(franchiseId) || `Franchise ${franchiseId || '?'}`;
-    const assets = parseMflAssetList(text(entry.willGiveUp ?? entry.will_give_up ?? entry.assets ?? entry.player), { playerNames: players, franchiseNames: names });
+    const assets = parseMflAssetList(text(entry.willGiveUp ?? entry.will_give_up ?? entry.assets ?? entry.player), { playerNames: players, franchiseNames: names, draftOrderFranchiseIds });
     const comments = text(entry.comments ?? entry.comment) || null;
     return {
       id: `bait-flat-${franchiseId}-${index}`,
@@ -479,11 +488,13 @@ function mergeAssetLists(...lists: MflAsset[][]): MflAsset[] {
 export function parseFutureDraftPicksByFranchise(
   payload: unknown,
   franchiseNames: Map<string, string> = new Map(),
+  draftOrderFranchiseIds: string[] = [],
 ): Record<string, MflAsset[]> {
   if (!payload || mflErrorMessage(payload)) return {};
   const root = record(payload);
   const picksRoot = record(root?.futureDraftPicks) ?? root;
   const byFranchise: Record<string, MflAsset[]> = {};
+  const order = draftOrderFranchiseIds.length > 0 ? draftOrderFranchiseIds : [];
 
   for (const franchise of records(picksRoot?.franchise)) {
     const ownerId = normalizeFranchiseId(franchise.id ?? record(franchise['@attributes'])?.id);
@@ -510,6 +521,7 @@ export function parseFutureDraftPicksByFranchise(
           year,
           round,
           franchiseNames,
+          draftOrderFranchiseIds: order,
         }),
       );
     }
@@ -527,11 +539,13 @@ export function parseAssetsExportByFranchise(
   payload: unknown,
   franchiseNames: Map<string, string> = new Map(),
   draftYear?: string | null,
+  draftOrderFranchiseIds: string[] = [],
 ): Record<string, MflAsset[]> {
   if (!payload || mflErrorMessage(payload)) return {};
   const root = record(payload);
   const assetsRoot = record(root?.assets) ?? root;
   const byFranchise: Record<string, MflAsset[]> = {};
+  const order = draftOrderFranchiseIds.length > 0 ? draftOrderFranchiseIds : [];
 
   for (const franchise of records(assetsRoot?.franchise)) {
     const ownerId = normalizeFranchiseId(franchise.id ?? record(franchise['@attributes'])?.id);
@@ -548,7 +562,7 @@ export function parseAssetsExportByFranchise(
     for (const pick of pickNodes) {
       const rawId = text(entryValue(pick, 'id', 'encoded', 'asset', 'pick'));
       if (rawId && /^(FP|DP)_/i.test(rawId)) {
-        assets.push(parseMflAssetToken(rawId, { franchiseNames, draftYear }));
+        assets.push(parseMflAssetToken(rawId, { franchiseNames, draftYear, draftOrderFranchiseIds: order }));
         continue;
       }
       const year = text(entryValue(pick, 'year'));
@@ -565,7 +579,7 @@ export function parseAssetsExportByFranchise(
         ),
       );
       if (year && round && originalFranchiseId) {
-        assets.push(buildFuturePickAsset({ originalFranchiseId, year, round, franchiseNames }));
+        assets.push(buildFuturePickAsset({ originalFranchiseId, year, round, franchiseNames, draftOrderFranchiseIds: order }));
       } else if (round && slot) {
         assets.push(buildDraftPickAsset(round, slot, draftYear));
       }
@@ -887,18 +901,23 @@ export function parseTradesPageState(input: {
   fantasyCalcEntries?: FantasyCalcCatalogEntry[];
 }): TradesPageState {
   const names = franchiseDirectory(input.league);
+  const draftOrderFranchiseIds = draftOrderFranchiseIdsFromLeague(input.league);
   const league = record(record(input.league)?.league);
   const defaultExpirationDays = integerValue(league?.defaultTradeExpirationDays) ?? 7;
   const franchises = franchiseOptions(input.league, input.primaryFranchiseId);
-  const recent = parseCompletedTrades(input.transactions, input.players, names);
-  const pendingRaw = input.pendingTrades ? parsePendingTrades(input.pendingTrades, input.players, names) : [];
-  const tradeBait = input.tradeBait ? parseTradeBait(input.tradeBait, input.players, names) : [];
+  const recent = parseCompletedTrades(input.transactions, input.players, names, draftOrderFranchiseIds);
+  const pendingRaw = input.pendingTrades
+    ? parsePendingTrades(input.pendingTrades, input.players, names, draftOrderFranchiseIds)
+    : [];
+  const tradeBait = input.tradeBait
+    ? parseTradeBait(input.tradeBait, input.players, names, draftOrderFranchiseIds)
+    : [];
   const rosterPlayersByFranchiseId = input.roster ? parseAllRosterAssets(input.roster, input.players) : {};
   const futurePicksByFranchiseId = input.futureDraftPicks
-    ? parseFutureDraftPicksByFranchise(input.futureDraftPicks, names)
+    ? parseFutureDraftPicksByFranchise(input.futureDraftPicks, names, draftOrderFranchiseIds)
     : {};
   const assetsPicksByFranchiseId = input.assets
-    ? parseAssetsExportByFranchise(input.assets, names, text(league?.year) || null)
+    ? parseAssetsExportByFranchise(input.assets, names, text(league?.year) || null, draftOrderFranchiseIds)
     : {};
   const rosterAssetsByFranchiseId = mergePicksIntoRosterAssets(
     rosterPlayersByFranchiseId,
