@@ -17,11 +17,15 @@ import {
   parseTradeBait,
   parseTradesPageState,
   parseFutureDraftPicksByFranchise,
+  buildTradeOfferPool,
+  buildTradeRequestPool,
 } from '../lib/mfl-trades.ts';
 
 import {
   formatFuturePickLabel,
   parseMflAssetToken,
+  partitionTradePickerAssets,
+  sortTradePickerAssets,
 } from '../lib/mfl-assets.ts';
 
 test('parseCompletedTrades maps franchise swaps and pick assets', () => {
@@ -677,3 +681,83 @@ test('counter and amend drafts include pick assets, not only players', () => {
   assert.deepEqual(amend.requestingPlayerIds, ['FP_0008_2027_2']);
   assert.equal(amend.revokeTradeId, '9');
 });
+
+test('partitionTradePickerAssets surfaces draft picks before players', () => {
+  const partitioned = partitionTradePickerAssets([
+    { kind: 'player', id: '2', label: 'Zebra, A' },
+    {
+      kind: 'futurePick',
+      id: 'FP_0008_2027_2',
+      label: '2027 2nd (Shadow)',
+      franchiseId: '0008',
+      year: '2027',
+      round: '2',
+    },
+    { kind: 'player', id: '1', label: 'Alpha, B' },
+  ]);
+  assert.deepEqual(partitioned.picks.map((asset) => asset.id), ['FP_0008_2027_2']);
+  assert.deepEqual(partitioned.players.map((asset) => asset.label), ['Alpha, B', 'Zebra, A']);
+  assert.deepEqual(
+    sortTradePickerAssets([
+      { kind: 'player', id: '1', label: 'Alpha, B' },
+      {
+        kind: 'futurePick',
+        id: 'FP_0008_2027_2',
+        label: '2027 2nd (Shadow)',
+        franchiseId: '0008',
+        year: '2027',
+        round: '2',
+      },
+    ]).map((asset) => asset.kind),
+    ['futurePick', 'player'],
+  );
+});
+
+test('trade picker pools include owned picks and exclude free agents', () => {
+  const myRoster = [
+    { kind: 'player' as const, id: '11671', label: 'Alpha, One' },
+    {
+      kind: 'futurePick' as const,
+      id: 'FP_0001_2027_1',
+      label: '2027 1st (Hitmen)',
+      franchiseId: '0001',
+      year: '2027',
+      round: '1',
+    },
+  ];
+  const freeAgents = [
+    { kind: 'player' as const, id: '99999', label: 'Free, Agent' },
+  ];
+  const byFranchise = {
+    '0001': myRoster,
+    '0008': [
+      { kind: 'player' as const, id: '12801', label: 'Partner, Player' },
+      {
+        kind: 'futurePick' as const,
+        id: 'FP_0008_2027_2',
+        label: '2027 2nd (Shadow)',
+        franchiseId: '0008',
+        year: '2027',
+        round: '2',
+      },
+    ],
+  };
+
+  const offer = buildTradeOfferPool(myRoster);
+  assert.ok(offer.some((asset) => asset.id === '11671'));
+  assert.ok(offer.some((asset) => asset.id === 'FP_0001_2027_1'));
+  assert.equal(offer[0].kind, 'futurePick');
+
+  const request = buildTradeRequestPool(byFranchise, '0008');
+  assert.ok(request.some((asset) => asset.id === '12801'));
+  assert.ok(request.some((asset) => asset.id === 'FP_0008_2027_2'));
+  assert.ok(!request.some((asset) => asset.id === '99999'));
+  // Even if a caller mistakenly concatenates FAs, the request helper itself never reads FA pools.
+  assert.deepEqual(
+    request.map((asset) => asset.id).sort(),
+    ['12801', 'FP_0008_2027_2'],
+  );
+  assert.ok(!offer.some((asset) => asset.id === '99999'));
+  assert.equal(freeAgents[0].id, '99999'); // sanity: FA fixture exists but is unused by pools
+});
+

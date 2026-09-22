@@ -156,7 +156,57 @@ export function formatMflAssetLabels(assets: MflAsset[]): string {
   return assets.map((asset) => asset.label).join(' • ');
 }
 
-/** Players A–Z, then current-year picks, then future picks. */
+export function isDraftPickAsset(asset: MflAsset): boolean {
+  return asset.kind === 'futurePick' || asset.kind === 'draftPick';
+}
+
+/** Split tradeable assets into draft picks vs roster players (unknowns ignored). */
+export function partitionTradePickerAssets(assets: MflAsset[]): {
+  picks: MflAsset[];
+  players: MflAsset[];
+} {
+  const picks: MflAsset[] = [];
+  const players: MflAsset[] = [];
+  for (const asset of assets) {
+    if (asset.kind === 'futurePick' || asset.kind === 'draftPick') picks.push(asset);
+    else if (asset.kind === 'player') players.push(asset);
+  }
+  return {
+    picks: sortTradePickerPicks(picks),
+    players: [...players].sort((left, right) => left.label.localeCompare(right.label)),
+  };
+}
+
+function sortTradePickerPicks(assets: MflAsset[]): MflAsset[] {
+  return [...assets].sort((left, right) => {
+    if (left.kind === 'draftPick' && right.kind === 'futurePick') return -1;
+    if (left.kind === 'futurePick' && right.kind === 'draftPick') return 1;
+    if (left.kind === 'futurePick' && right.kind === 'futurePick') {
+      const yearDiff = left.year.localeCompare(right.year);
+      if (yearDiff !== 0) return yearDiff;
+      const roundDiff = Number(left.round) - Number(right.round);
+      if (roundDiff !== 0) return roundDiff;
+    }
+    if (left.kind === 'draftPick' && right.kind === 'draftPick') {
+      const roundDiff = Number(left.round) - Number(right.round);
+      if (roundDiff !== 0) return roundDiff;
+      const pickDiff = Number(left.pick) - Number(right.pick);
+      if (pickDiff !== 0) return pickDiff;
+    }
+    return left.label.localeCompare(right.label);
+  });
+}
+
+/**
+ * Picker order: draft picks first (visible without scrolling past the roster),
+ * then roster players A–Z.
+ */
+export function sortTradePickerAssets(assets: MflAsset[]): MflAsset[] {
+  const { picks, players } = partitionTradePickerAssets(assets);
+  return [...picks, ...players];
+}
+
+/** Players A–Z, then current-year picks, then future picks (history / summaries). */
 export function sortTradeAssets(assets: MflAsset[]): MflAsset[] {
   return [...assets].sort((left, right) => {
     const rank = (asset: MflAsset) => {

@@ -12,7 +12,7 @@ A phone-first Next.js App Router companion for a MyFantasyLeague league.
 - Server-side login route architecture that keeps only an `MFL_USER_ID` httpOnly session cookie.
 - Real `Waivers` board (free agents + FAAB rules + recent claims) and `Trades` board (history/pending/bait + draft offer UI).
 - Pending trades show a compact FantasyCalc dynasty value read (cached ≤1h) plus outbound KeepTradeCut / FantasyCalc calculator links. Owners can accept / decline incoming offers, cancel or amend+resend outgoing offers, and propose new trades after confirm (live MFL `tradeProposal` / `tradeResponse`).
-- Draft offers use asset search/select (your roster + owned draft picks / partner roster + picks + FAs) with live FantasyCalc totals; Counter prefills the draft from a pending offer; Amend & resend prefills an outgoing offer then revokes+reproposes.
+- Draft offers use asset search/select (your rostered players + owned draft picks / partner rostered players + owned picks). Draft picks are grouped above players. Free agents are not tradeable here (use FA/waivers). Counter prefills the draft from a pending offer; Amend & resend prefills an outgoing offer then revokes+reproposes.
 - In-app `Notifications` center derived from MFL transactions / live scores / pending trades, with optional Web Push that mirrors MFL email-style alerts (trades, waivers, IR/taxi, lineup locks, scores).
 - `More`, `Roster`, `Standings`, and `All Rosters` pages.
 - Manifest and SVG icons for PWA plumbing.

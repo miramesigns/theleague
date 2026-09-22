@@ -6,6 +6,7 @@ import {
   parseMflAssetList,
   parseMflAssetToken,
   sortTradeAssets,
+  sortTradePickerAssets,
   type MflAsset,
 } from './mfl-assets.ts';
 import { buildFantasyCalcIndexes, fetchFantasyCalcCatalog, type FantasyCalcCatalogEntry } from './fantasycalc-values.ts';
@@ -734,6 +735,27 @@ export function resolveTradeDraftAssetLabel(id: string, nameById: Map<string, st
  * Prefill a counter draft from the primary franchise view: same terms as an outgoing offer.
  * You offer what you would give; you request what you would get.
  */
+
+/**
+ * Assets the signed-in franchise can offer: rostered players + owned picks only.
+ * Free agents are never included.
+ */
+export function buildTradeOfferPool(myRosterAssets: MflAsset[]): MflAsset[] {
+  return sortTradePickerAssets(myRosterAssets.filter(isSelectableTradeAsset));
+}
+
+/**
+ * Assets that can be requested from a partner: that franchise's rostered players + owned picks only.
+ * Free agents are excluded from trade pickers (use FA/waiver flows instead).
+ */
+export function buildTradeRequestPool(
+  rosterAssetsByFranchiseId: Record<string, MflAsset[]>,
+  partnerFranchiseId: string,
+): MflAsset[] {
+  const partnerAssets = rosterAssetsByFranchiseId[partnerFranchiseId] ?? [];
+  return sortTradePickerAssets(partnerAssets.filter(isSelectableTradeAsset));
+}
+
 export function counterDraftFromPendingTrade(
   trade: TradeRow,
   primaryFranchiseId: string | null,
