@@ -22,6 +22,8 @@ import {
 } from '../lib/mfl-trades.ts';
 
 import {
+  draftPickSlotForFranchise,
+  formatDraftPickLabel,
   formatFuturePickLabel,
   parseMflAssetToken,
   partitionTradePickerAssets,
@@ -531,13 +533,42 @@ test('parseTradesPageState keeps default expiration days from league', () => {
   assert.equal(state.valueCatalog, null);
 });
 
-test('future pick labels are human-readable with franchise names', () => {
-  assert.equal(formatFuturePickLabel('2027', '2', 'Hitmen'), '2027 2nd (Hitmen)');
-  const named = parseMflAssetToken('FP_0001_2027_3', {
-    franchiseNames: new Map([['0001', "P.O.T.'s Hitmen"]]),
-  });
-  assert.equal(named.kind, 'futurePick');
-  assert.equal(named.label, "2027 3rd (P.O.T.'s Hitmen)");
+test('future pick labels use Rd/pick slots from original franchise draft order', () => {
+  assert.equal(draftPickSlotForFranchise('0004'), 4);
+  assert.equal(draftPickSlotForFranchise('0005'), 5);
+  assert.equal(draftPickSlotForFranchise('0007'), 7);
+  assert.equal(draftPickSlotForFranchise('0008'), 8);
+  // Incomplete order lists must not invent slots (0008 ≠ pick 2).
+  assert.equal(draftPickSlotForFranchise('0008', ['0001', '0008']), 8);
+  // Full league order is trusted even when not numeric-id order.
+  assert.equal(
+    draftPickSlotForFranchise(
+      '0005',
+      ['0001', '0002', '0003', '0004', '0008', '0006', '0007', '0005', '0009', '0010', '0011', '0012'],
+    ),
+    8,
+  );
+  assert.equal(formatFuturePickLabel('2027', '1', 4), 'Rd 1, pick 4 (2027)');
+  assert.equal(formatFuturePickLabel('2027', '1', 7), 'Rd 1, pick 7 (2027)');
+  assert.equal(formatFuturePickLabel('2027', '4', 5), 'Rd 4, pick 5 (2027)');
+  assert.equal(formatDraftPickLabel('0', '4', '2026'), 'Rd 1, pick 4 (2026)');
+
+  // Ashy Elbows own their 2027 R1 → board row 4
+  const ashy = parseMflAssetToken('FP_0004_2027_1');
+  assert.equal(ashy.kind, 'futurePick');
+  assert.equal(ashy.label, 'Rd 1, pick 4 (2027)');
+  if (ashy.kind === 'futurePick') assert.equal(ashy.pick, '4');
+
+  // Trophy (0005) owns Gas Factory (0007) 2027 R1 → pick 7
+  const gas = parseMflAssetToken('FP_0007_2027_1');
+  assert.equal(gas.label, 'Rd 1, pick 7 (2027)');
+
+  // Trophy owns Shadow (0008) 2027 R1 → pick 8
+  assert.equal(parseMflAssetToken('FP_0008_2027_1').label, 'Rd 1, pick 8 (2027)');
+
+  // Trophy owns own 2027 R4/R5 → pick 5
+  assert.equal(parseMflAssetToken('FP_0005_2027_4').label, 'Rd 4, pick 5 (2027)');
+  assert.equal(parseMflAssetToken('FP_0005_2027_5').label, 'Rd 5, pick 5 (2027)');
 });
 
 test('parseFutureDraftPicksByFranchise buckets owned picks with FP_ ids', () => {
@@ -567,7 +598,7 @@ test('parseFutureDraftPicksByFranchise buckets owned picks with FP_ ids', () => 
     byFranchise['0001'].map((asset) => asset.id).sort(),
     ['FP_0001_2027_1', 'FP_0008_2027_3'],
   );
-  assert.equal(byFranchise['0001'].find((asset) => asset.id === 'FP_0008_2027_3')?.label, '2027 3rd (Shadow)');
+  assert.equal(byFranchise['0001'].find((asset) => asset.id === 'FP_0008_2027_3')?.label, 'Rd 3, pick 8 (2027)');
   assert.equal(byFranchise['0008'][0].id, 'FP_0008_2027_2');
 });
 
@@ -629,7 +660,7 @@ test('parseTradesPageState merges owned picks into roster asset pools', () => {
   assert.ok(state.rosterAssetsByFranchiseId['0008']?.some((asset) => asset.id === 'FP_0008_2027_2'));
   assert.equal(
     state.myRosterAssets.find((asset) => asset.id === 'FP_0008_2027_3')?.label,
-    '2027 3rd (Shadow)',
+    'Rd 3, pick 8 (2027)',
   );
 });
 
@@ -650,9 +681,10 @@ test('counter and amend drafts include pick assets, not only players', () => {
       {
         kind: 'futurePick' as const,
         id: 'FP_0001_2027_1',
-        label: '2027 1st (Hitmen)',
+        label: 'Rd 1, pick 1 (2027)',
         franchiseId: '0001',
         year: '2027',
+        pick: '1',
         round: '1',
       },
     ],
@@ -660,9 +692,10 @@ test('counter and amend drafts include pick assets, not only players', () => {
       {
         kind: 'futurePick' as const,
         id: 'FP_0008_2027_2',
-        label: '2027 2nd (Shadow)',
+        label: 'Rd 2, pick 8 (2027)',
         franchiseId: '0008',
         year: '2027',
+        pick: '8',
         round: '2',
       },
     ],
@@ -688,10 +721,11 @@ test('partitionTradePickerAssets surfaces draft picks before players', () => {
     {
       kind: 'futurePick',
       id: 'FP_0008_2027_2',
-      label: '2027 2nd (Shadow)',
+      label: 'Rd 2, pick 8 (2027)',
       franchiseId: '0008',
       year: '2027',
       round: '2',
+      pick: '8',
     },
     { kind: 'player', id: '1', label: 'Alpha, B' },
   ]);
@@ -703,10 +737,11 @@ test('partitionTradePickerAssets surfaces draft picks before players', () => {
       {
         kind: 'futurePick',
         id: 'FP_0008_2027_2',
-        label: '2027 2nd (Shadow)',
+        label: 'Rd 2, pick 8 (2027)',
         franchiseId: '0008',
         year: '2027',
         round: '2',
+        pick: '8',
       },
     ]).map((asset) => asset.kind),
     ['futurePick', 'player'],
@@ -719,10 +754,11 @@ test('trade picker pools include owned picks and exclude free agents', () => {
     {
       kind: 'futurePick' as const,
       id: 'FP_0001_2027_1',
-      label: '2027 1st (Hitmen)',
+      label: 'Rd 1, pick 1 (2027)',
       franchiseId: '0001',
       year: '2027',
-      round: '1',
+      pick: '1',
+        round: '1',
     },
   ];
   const freeAgents = [
@@ -735,9 +771,10 @@ test('trade picker pools include owned picks and exclude free agents', () => {
       {
         kind: 'futurePick' as const,
         id: 'FP_0008_2027_2',
-        label: '2027 2nd (Shadow)',
+        label: 'Rd 2, pick 8 (2027)',
         franchiseId: '0008',
         year: '2027',
+        pick: '8',
         round: '2',
       },
     ],
