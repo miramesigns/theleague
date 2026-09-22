@@ -53,7 +53,7 @@ function PlayerAssetPicker({
         const resolvedLabel = resolveTradeDraftAssetLabel(id, nameById, assets);
         return fromPool
           ? { ...fromPool, label: resolvedLabel }
-          : { kind: 'player' as const, id, label: resolvedLabel };
+          : { kind: 'unknown' as const, id, label: resolvedLabel };
       }),
     [assets, nameById, selectedIds],
   );
@@ -99,7 +99,7 @@ function PlayerAssetPicker({
                   </button>
                 );
               })}
-              {available.length === 0 ? <p className="muted small">No matching players.</p> : null}
+              {available.length === 0 ? <p className="muted small">No matching assets.</p> : null}
             </div>
           ) : (
             <select
@@ -111,7 +111,7 @@ function PlayerAssetPicker({
                 event.target.value = '';
               }}
             >
-              <option value="">Select a player…</option>
+              <option value="">Select an asset…</option>
               {assets
                 .filter((asset) => !selectedIds.includes(asset.id))
                 .map((asset) => {
@@ -479,7 +479,7 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
             valueCatalog={state.valueCatalog}
             nameById={nameById}
             emptyMessage="Sign in with a roster to pick assets."
-            searchPlaceholder="Search your roster…"
+            searchPlaceholder="Search your roster or picks…"
           />
 
           <PlayerAssetPicker
@@ -490,7 +490,7 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
             valueCatalog={state.valueCatalog}
             nameById={nameById}
             emptyMessage="Partner roster / free agents unavailable."
-            searchPlaceholder="Search partner roster or free agents…"
+            searchPlaceholder="Search partner assets or free agents…"
           />
 
           <div className="trade-value-help trade-value-help-draft">
@@ -511,7 +511,7 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
               </>
             ) : (
               <p className="small muted" style={{ margin: 0 }}>
-                Select players to see FantasyCalc side totals.
+                Select assets to see FantasyCalc side totals.
               </p>
             )}
             <div className="trade-value-links">

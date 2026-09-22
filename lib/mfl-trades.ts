@@ -1,4 +1,13 @@
-import { formatMflAssetLabels, parseMflAssetList, type MflAsset } from './mfl-assets.ts';
+import {
+  buildDraftPickAsset,
+  buildFuturePickAsset,
+  formatMflAssetLabels,
+  isSelectableTradeAsset,
+  parseMflAssetList,
+  parseMflAssetToken,
+  sortTradeAssets,
+  type MflAsset,
+} from './mfl-assets.ts';
 import { buildFantasyCalcIndexes, fetchFantasyCalcCatalog, type FantasyCalcCatalogEntry } from './fantasycalc-values.ts';
 import { fetchMflExport } from './mfl.ts';
 import { formatMflTimestamp } from './mfl-format.ts';
@@ -60,7 +69,7 @@ export type TradesPageState = {
   recent: TradeRow[];
   tradeBait: TradeBaitRow[];
   myRosterAssets: MflAsset[];
-  /** Player assets on each franchise roster (for draft request picker). */
+  /** Roster players + owned draft picks per franchise (for draft pickers). */
   rosterAssetsByFranchiseId: Record<string, MflAsset[]>;
   freeAgentAssets: MflAsset[];
   valueCatalog: TradeValueCatalog | null;
@@ -297,8 +306,8 @@ export function parseCompletedTrades(
     .map((entry, index) => {
       const franchiseId = normalizeFranchiseId(entryValue(entry, 'franchise', 'franchise1'));
       const partnerId = normalizeFranchiseId(entryValue(entry, 'franchise2', 'partner'));
-      const offered = parseMflAssetList(text(entryValue(entry, 'franchise1_gave_up')), players);
-      const requested = parseMflAssetList(text(entryValue(entry, 'franchise2_gave_up')), players);
+      const offered = parseMflAssetList(text(entryValue(entry, 'franchise1_gave_up')), { playerNames: players, franchiseNames: names });
+      const requested = parseMflAssetList(text(entryValue(entry, 'franchise2_gave_up')), { playerNames: players, franchiseNames: names });
       const timestamp = numberValue(entryValue(entry, 'timestamp')) ?? 0;
       const expiresAt = numberValue(entryValue(entry, 'expires'));
       const franchiseName = resolveFranchiseName(names, franchiseId);
@@ -364,11 +373,11 @@ export function parsePendingTrades(
     );
     const offered = parseMflAssetList(
       text(entryValue(entry, 'franchise1_gave_up', 'will_give_up', 'offered', 'gives')),
-      players,
+      { playerNames: players, franchiseNames: names },
     );
     const requested = parseMflAssetList(
       text(entryValue(entry, 'franchise2_gave_up', 'will_receive', 'requested', 'gets')),
-      players,
+      { playerNames: players, franchiseNames: names },
     );
     const timestamp = numberValue(entryValue(entry, 'timestamp')) ?? 0;
     const expiresAt = numberValue(entryValue(entry, 'expires', 'expiration'));
@@ -416,7 +425,7 @@ export function parseTradeBait(
     return franchises.flatMap((franchise, franchiseIndex) => {
       const franchiseId = text(franchise.id);
       const franchiseName = names.get(franchiseId) || text(franchise.name) || `Franchise ${franchiseId}`;
-      const assets = parseMflAssetList(text(franchise.willGiveUp ?? franchise.will_give_up ?? franchise.assets ?? franchise.player), players);
+      const assets = parseMflAssetList(text(franchise.willGiveUp ?? franchise.will_give_up ?? franchise.assets ?? franchise.player), { playerNames: players, franchiseNames: names });
       const comments = text(franchise.comments ?? franchise.comment) || null;
       if (assets.length === 0 && !comments) return [];
       return [{
@@ -433,7 +442,7 @@ export function parseTradeBait(
   return flat.map((entry, index) => {
     const franchiseId = text(entry.franchise ?? entry.franchise_id);
     const franchiseName = names.get(franchiseId) || `Franchise ${franchiseId || '?'}`;
-    const assets = parseMflAssetList(text(entry.willGiveUp ?? entry.will_give_up ?? entry.assets ?? entry.player), players);
+    const assets = parseMflAssetList(text(entry.willGiveUp ?? entry.will_give_up ?? entry.assets ?? entry.player), { playerNames: players, franchiseNames: names });
     const comments = text(entry.comments ?? entry.comment) || null;
     return {
       id: `bait-flat-${franchiseId}-${index}`,
@@ -444,6 +453,146 @@ export function parseTradeBait(
       summary: `${franchiseName}: ${formatMflAssetLabels(assets)}${comments ? ` — ${comments}` : ''}`,
     } satisfies TradeBaitRow;
   });
+}
+
+
+function appendUniqueAssets(target: MflAsset[], incoming: MflAsset[]): void {
+  const seen = new Set(target.map((asset) => asset.id));
+  for (const asset of incoming) {
+    if (!asset.id || seen.has(asset.id)) continue;
+    seen.add(asset.id);
+    target.push(asset);
+  }
+}
+
+function mergeAssetLists(...lists: MflAsset[][]): MflAsset[] {
+  const merged: MflAsset[] = [];
+  for (const list of lists) appendUniqueAssets(merged, list);
+  return sortTradeAssets(merged);
+}
+
+/**
+ * Owned future picks from MFL `futureDraftPicks`.
+ * Id is FP_{originalFranchise}_{year}_{round}; bucketed by current owner.
+ */
+export function parseFutureDraftPicksByFranchise(
+  payload: unknown,
+  franchiseNames: Map<string, string> = new Map(),
+): Record<string, MflAsset[]> {
+  if (!payload || mflErrorMessage(payload)) return {};
+  const root = record(payload);
+  const picksRoot = record(root?.futureDraftPicks) ?? root;
+  const byFranchise: Record<string, MflAsset[]> = {};
+
+  for (const franchise of records(picksRoot?.franchise)) {
+    const ownerId = normalizeFranchiseId(franchise.id ?? record(franchise['@attributes'])?.id);
+    if (!ownerId) continue;
+    const assets: MflAsset[] = [];
+    for (const pick of records(franchise.futureDraftPick ?? franchise.futureDraftPicks ?? franchise.pick)) {
+      const year = text(entryValue(pick, 'year'));
+      const round = text(entryValue(pick, 'round'));
+      // Live league 35743 uses originalPickFor.
+      const originalFranchiseId = normalizeFranchiseId(
+        entryValue(
+          pick,
+          'originalPickFor',
+          'originalPickFor',
+          'original_pick_for',
+          'originalFranchise',
+          'franchise',
+        ),
+      );
+      if (!year || !round || !originalFranchiseId) continue;
+      assets.push(
+        buildFuturePickAsset({
+          originalFranchiseId,
+          year,
+          round,
+          franchiseNames,
+        }),
+      );
+    }
+    if (assets.length > 0) byFranchise[ownerId] = sortTradeAssets(assets);
+  }
+
+  return byFranchise;
+}
+
+/**
+ * Best-effort parse of MFL `assets` export for current-year DP_ / future FP_.
+ * Requires an authenticated session; shape varies by season.
+ */
+export function parseAssetsExportByFranchise(
+  payload: unknown,
+  franchiseNames: Map<string, string> = new Map(),
+  draftYear?: string | null,
+): Record<string, MflAsset[]> {
+  if (!payload || mflErrorMessage(payload)) return {};
+  const root = record(payload);
+  const assetsRoot = record(root?.assets) ?? root;
+  const byFranchise: Record<string, MflAsset[]> = {};
+
+  for (const franchise of records(assetsRoot?.franchise)) {
+    const ownerId = normalizeFranchiseId(franchise.id ?? record(franchise['@attributes'])?.id);
+    if (!ownerId) continue;
+    const assets: MflAsset[] = [];
+
+    const pickNodes = [
+      ...records(franchise.pick),
+      ...records(franchise.draftPick),
+      ...records(franchise.currentYearDraftPick),
+      ...records(franchise.futureDraftPick),
+      ...records(franchise.futureDraftPicks),
+    ];
+    for (const pick of pickNodes) {
+      const rawId = text(entryValue(pick, 'id', 'encoded', 'asset', 'pick'));
+      if (rawId && /^(FP|DP)_/i.test(rawId)) {
+        assets.push(parseMflAssetToken(rawId, { franchiseNames, draftYear }));
+        continue;
+      }
+      const year = text(entryValue(pick, 'year'));
+      const round = text(entryValue(pick, 'round'));
+      const slot = text(entryValue(pick, 'pick', 'slot'));
+      const originalFranchiseId = normalizeFranchiseId(
+        entryValue(
+          pick,
+          'originalPickFor',
+          'originalPickFor',
+          'original_pick_for',
+          'originalFranchise',
+          'franchise',
+        ),
+      );
+      if (year && round && originalFranchiseId) {
+        assets.push(buildFuturePickAsset({ originalFranchiseId, year, round, franchiseNames }));
+      } else if (round && slot) {
+        assets.push(buildDraftPickAsset(round, slot, draftYear));
+      }
+    }
+
+    const pickOnly = assets.filter((asset) => asset.kind === 'futurePick' || asset.kind === 'draftPick');
+    if (pickOnly.length > 0) byFranchise[ownerId] = sortTradeAssets(pickOnly);
+  }
+
+  return byFranchise;
+}
+
+function mergePicksIntoRosterAssets(
+  rosterAssetsByFranchiseId: Record<string, MflAsset[]>,
+  ...pickMaps: Array<Record<string, MflAsset[]>>
+): Record<string, MflAsset[]> {
+  const franchiseIds = new Set<string>([
+    ...Object.keys(rosterAssetsByFranchiseId),
+    ...pickMaps.flatMap((map) => Object.keys(map)),
+  ]);
+  const merged: Record<string, MflAsset[]> = {};
+  for (const franchiseId of franchiseIds) {
+    merged[franchiseId] = mergeAssetLists(
+      rosterAssetsByFranchiseId[franchiseId] ?? [],
+      ...pickMaps.map((map) => map[franchiseId] ?? []),
+    );
+  }
+  return merged;
 }
 
 function parseMyRosterAssets(rosterPayload: unknown, playersPayload: unknown): MflAsset[] {
@@ -521,8 +670,12 @@ function rememberPlayerName(map: Map<string, string>, id: string, label: string 
 function rememberAssetNames(map: Map<string, string>, assets: MflAsset[] | undefined) {
   if (!assets) return;
   for (const asset of assets) {
-    if (asset.kind !== 'player') continue;
-    rememberPlayerName(map, asset.id, asset.label);
+    if (!asset.id || !asset.label) continue;
+    if (asset.kind === 'player') {
+      rememberPlayerName(map, asset.id, asset.label);
+      continue;
+    }
+    if (!map.has(asset.id)) map.set(asset.id, asset.label);
   }
 }
 
@@ -572,6 +725,8 @@ export function resolveTradeDraftAssetLabel(id: string, nameById: Map<string, st
   const fromMap = nameById.get(id);
   if (fromMap && !isPlaceholderPlayerLabel(fromMap, id)) return fromMap;
   if (fromPool) return fromPool;
+  const parsed = parseMflAssetToken(id);
+  if (parsed.kind === 'futurePick' || parsed.kind === 'draftPick') return parsed.label;
   return `Player ${id}`;
 }
 
@@ -599,8 +754,8 @@ export function counterDraftFromPendingTrade(
 
   return {
     partnerId: otherId,
-    offeringPlayerIds: perspective.give.filter((asset) => asset.kind === 'player').map((asset) => asset.id),
-    requestingPlayerIds: perspective.get.filter((asset) => asset.kind === 'player').map((asset) => asset.id),
+    offeringPlayerIds: perspective.give.filter(isSelectableTradeAsset).map((asset) => asset.id),
+    requestingPlayerIds: perspective.get.filter(isSelectableTradeAsset).map((asset) => asset.id),
     revokeTradeId: null,
   };
 }
@@ -626,8 +781,8 @@ export function amendDraftFromPendingTrade(
 
   return {
     partnerId: trade.partnerId,
-    offeringPlayerIds: trade.offered.filter((asset) => asset.kind === 'player').map((asset) => asset.id),
-    requestingPlayerIds: trade.requested.filter((asset) => asset.kind === 'player').map((asset) => asset.id),
+    offeringPlayerIds: trade.offered.filter(isSelectableTradeAsset).map((asset) => asset.id),
+    requestingPlayerIds: trade.requested.filter(isSelectableTradeAsset).map((asset) => asset.id),
     revokeTradeId: trade.mflTradeId,
     expiresDays,
   };
@@ -703,6 +858,8 @@ export function parseTradesPageState(input: {
   tradeBait: unknown | null;
   roster: unknown | null;
   freeAgents?: unknown | null;
+  futureDraftPicks?: unknown | null;
+  assets?: unknown | null;
   primaryFranchiseId: string | null;
   authenticated: boolean;
   fantasyCalcEntries?: FantasyCalcCatalogEntry[];
@@ -714,7 +871,18 @@ export function parseTradesPageState(input: {
   const recent = parseCompletedTrades(input.transactions, input.players, names);
   const pendingRaw = input.pendingTrades ? parsePendingTrades(input.pendingTrades, input.players, names) : [];
   const tradeBait = input.tradeBait ? parseTradeBait(input.tradeBait, input.players, names) : [];
-  const rosterAssetsByFranchiseId = input.roster ? parseAllRosterAssets(input.roster, input.players) : {};
+  const rosterPlayersByFranchiseId = input.roster ? parseAllRosterAssets(input.roster, input.players) : {};
+  const futurePicksByFranchiseId = input.futureDraftPicks
+    ? parseFutureDraftPicksByFranchise(input.futureDraftPicks, names)
+    : {};
+  const assetsPicksByFranchiseId = input.assets
+    ? parseAssetsExportByFranchise(input.assets, names, text(league?.year) || null)
+    : {};
+  const rosterAssetsByFranchiseId = mergePicksIntoRosterAssets(
+    rosterPlayersByFranchiseId,
+    futurePicksByFranchiseId,
+    assetsPicksByFranchiseId,
+  );
   const myRosterAssets = input.primaryFranchiseId
     ? rosterAssetsByFranchiseId[input.primaryFranchiseId] ?? (input.roster ? parseMyRosterAssets(input.roster, input.players) : [])
     : [];
@@ -767,7 +935,7 @@ export async function loadTradesPageState(sessionCookieValue: string | null): Pr
   const options = { sessionCookieValue: sessionCookieValue ?? undefined, cache: 'no-store' as const };
 
   try {
-    const [primary, leagueResponse, playersResponse, transactionsResponse, baitResponse, pendingResponse, rosterResponse, freeAgentsResponse, fantasyCalcEntries] = await Promise.all([
+    const [primary, leagueResponse, playersResponse, transactionsResponse, baitResponse, pendingResponse, rosterResponse, freeAgentsResponse, futureDraftPicksResponse, assetsResponse, fantasyCalcEntries] = await Promise.all([
       resolvePrimaryFranchiseId(sessionCookieValue),
       fetchMflExport('league', { JSON: '1' }, options),
       fetchMflExport('players', { JSON: '1' }, { revalidate: 60 * 60 * 24 }),
@@ -778,6 +946,11 @@ export async function loadTradesPageState(sessionCookieValue: string | null): Pr
         : Promise.resolve(null),
       fetchMflExport('rosters', { JSON: '1' }, options),
       fetchMflExport('freeAgents', { JSON: '1' }, options),
+      fetchMflExport('futureDraftPicks', { JSON: '1' }, options),
+      // Current-year DP_ picks (session required). Omitted when logged out.
+      authenticated
+        ? fetchMflExport('assets', { JSON: '1' }, options)
+        : Promise.resolve(null),
       fetchFantasyCalcCatalog(),
     ]);
 
@@ -793,7 +966,7 @@ export async function loadTradesPageState(sessionCookieValue: string | null): Pr
 
     const read = (response: Response | null) => (response?.ok ? response.json().catch(() => null) : Promise.resolve(null));
 
-    const [league, players, transactions, tradeBait, pendingTrades, roster, freeAgents] = await Promise.all([
+    const [league, players, transactions, tradeBait, pendingTrades, roster, freeAgents, futureDraftPicks, assets] = await Promise.all([
       read(leagueResponse),
       read(playersResponse),
       read(transactionsResponse),
@@ -801,6 +974,8 @@ export async function loadTradesPageState(sessionCookieValue: string | null): Pr
       pendingResponse ? read(pendingResponse) : Promise.resolve(null),
       rosterResponse.ok ? read(rosterResponse) : Promise.resolve(null),
       freeAgentsResponse.ok ? read(freeAgentsResponse) : Promise.resolve(null),
+      futureDraftPicksResponse.ok ? read(futureDraftPicksResponse) : Promise.resolve(null),
+      assetsResponse && assetsResponse.ok ? read(assetsResponse) : Promise.resolve(null),
     ]);
 
     return parseTradesPageState({
@@ -811,6 +986,8 @@ export async function loadTradesPageState(sessionCookieValue: string | null): Pr
       tradeBait,
       roster,
       freeAgents,
+      futureDraftPicks,
+      assets,
       primaryFranchiseId: primary?.franchiseId ?? null,
       authenticated,
       fantasyCalcEntries,

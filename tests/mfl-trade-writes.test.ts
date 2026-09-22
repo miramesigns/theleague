@@ -26,6 +26,10 @@ test('toMflAssetCsv joins ids with trailing comma like MFL export', () => {
 test('normalizeAssetIds drops blanks, duplicates, and unsafe tokens', () => {
   assert.deepEqual(normalizeAssetIds(['16287', '16287', ' 16788 ', '', 'bad id', 12]), ['16287', '16788']);
   assert.deepEqual(normalizeAssetIds(null), []);
+  assert.deepEqual(
+    normalizeAssetIds(['FP_0001_2027_3', 'DP_0_10', 'FP_0001_2027_3', 'bad id']),
+    ['FP_0001_2027_3', 'DP_0_10'],
+  );
 });
 
 test('normalizeFranchiseIdParam pads short numeric franchise ids', () => {
