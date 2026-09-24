@@ -1,5 +1,6 @@
 import Link from 'next/link';
 
+import { AutoRefresh } from '@/components/auto-refresh';
 import { WeekPicker } from '@/components/week-picker';
 import type { MatchupCard, MatchupTeam, ScoresPageState } from '@/lib/mfl-scores';
 import { MatchupSummary } from '@/components/matchup-summary';
@@ -126,6 +127,10 @@ export function ScoreBoard({
           )}
 
           <span className={`pill scoreboard-feed-pill${source === 'live' ? ' live' : ''}`}>{pillLabel}</span>
+        </div>
+
+        <div className="scores-controls">
+          <AutoRefresh />
         </div>
 
         {matchups.length > 0 ? (

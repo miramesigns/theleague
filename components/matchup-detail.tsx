@@ -1,3 +1,4 @@
+import { AutoRefresh } from '@/components/auto-refresh';
 import type { MatchupDetailState, MatchupTeam, MatchupPlayer } from '@/lib/mfl-scores';
 import { groupPlayersByPosition } from '@/lib/player-detail';
 import { MatchupSummary } from '@/components/matchup-summary';
@@ -115,6 +116,9 @@ export function MatchupDetail({ source, message, currentWeek, selectedWeek, matc
           </div>
           <a className="button primary" href="/scores">Back to scores</a>
         </div>
+        <div className="scores-controls">
+          <AutoRefresh />
+        </div>
       </section>
     );
   }
@@ -133,6 +137,7 @@ export function MatchupDetail({ source, message, currentWeek, selectedWeek, matc
         <div className="scores-controls">
           {currentWeek !== null && selectedWeek !== null ? <span className="pill">Week {selectedWeek}</span> : null}
           <span className="pill">{statusLabel}</span>
+          <AutoRefresh />
         </div>
       </div>
 
