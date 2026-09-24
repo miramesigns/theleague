@@ -37,6 +37,7 @@ function PlayerAssetPicker({
   nameById,
   emptyMessage,
   searchPlaceholder,
+  className,
 }: {
   label: string;
   assets: MflAsset[];
@@ -46,6 +47,7 @@ function PlayerAssetPicker({
   nameById: Map<string, string>;
   emptyMessage: string;
   searchPlaceholder: string;
+  className?: string;
 }) {
   const [query, setQuery] = useState('');
   const { picks, players } = useMemo(() => partitionTradePickerAssets(assets), [assets]);
@@ -104,7 +106,7 @@ function PlayerAssetPicker({
   };
 
   return (
-    <div className="trade-draft-side">
+    <div className={className ? `trade-draft-side ${className}` : 'trade-draft-side'}>
       <div className="trade-draft-side-title">{label}</div>
       {assets.length === 0 ? (
         <p className="muted small">{emptyMessage}</p>
@@ -515,6 +517,7 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
           <div className="trade-draft-sides">
             <PlayerAssetPicker
               label="You give"
+              className="trade-draft-side-give"
               assets={offerPool}
               selectedIds={offering}
               onChange={setOffering}
@@ -524,8 +527,11 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
               searchPlaceholder="Search your players…"
             />
 
+            <div className="trade-draft-sides-divider" role="separator" aria-hidden="true" />
+
             <PlayerAssetPicker
               label={`You get from ${partnerName}`}
+              className="trade-draft-side-get"
               assets={requestPool}
               selectedIds={requesting}
               onChange={setRequesting}
