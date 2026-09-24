@@ -63,6 +63,8 @@ export type WaiversPageState = {
   franchiseId: string | null;
   franchiseName: string | null;
   myBalance: number | null;
+  /** Current MFL league week when known (from live scoring); drives waiver window copy. */
+  currentWeek: number | null;
   rules: WaiverRules | null;
   freeAgents: FreeAgentRow[];
   recentClaims: WaiverClaimRow[];
@@ -371,6 +373,11 @@ export function parsePendingWaivers(
   });
 }
 
+function parseLiveScoringWeek(payload: unknown): number | null {
+  const live = record(record(payload)?.liveScoring);
+  return integerValue(live?.week);
+}
+
 export function parseWaiversPageState(input: {
   league: unknown;
   freeAgents: unknown;
@@ -379,6 +386,8 @@ export function parseWaiversPageState(input: {
   pendingWaivers: unknown | null;
   primaryFranchiseId: string | null;
   authenticated: boolean;
+  currentWeek?: number | null;
+  liveScoring?: unknown | null;
 }): WaiversPageState {
   const names = franchiseDirectory(input.league);
   const rules = parseWaiverRules(input.league);
@@ -388,6 +397,7 @@ export function parseWaiversPageState(input: {
   const pendingClaims = input.pendingWaivers
     ? parsePendingWaivers(input.pendingWaivers, input.players, names)
     : [];
+  const currentWeek = input.currentWeek ?? parseLiveScoringWeek(input.liveScoring ?? null);
 
   const mine = faabBoard.find((row) => row.isPrimary) ?? null;
 
@@ -399,6 +409,7 @@ export function parseWaiversPageState(input: {
       franchiseId: input.primaryFranchiseId,
       franchiseName: mine?.name ?? null,
       myBalance: mine?.bbidAvailableBalance ?? null,
+      currentWeek,
       rules: null,
       freeAgents: [],
       recentClaims: [],
@@ -416,6 +427,7 @@ export function parseWaiversPageState(input: {
     franchiseId: input.primaryFranchiseId,
     franchiseName: mine?.name ?? null,
     myBalance: mine?.bbidAvailableBalance ?? null,
+    currentWeek,
     rules,
     freeAgents,
     recentClaims,
@@ -429,7 +441,7 @@ export async function loadWaiversPageState(sessionCookieValue: string | null): P
   const options = { sessionCookieValue: sessionCookieValue ?? undefined, cache: 'no-store' as const };
 
   try {
-    const [primary, leagueResponse, freeAgentsResponse, playersResponse, transactionsResponse, pendingResponse] = await Promise.all([
+    const [primary, leagueResponse, freeAgentsResponse, playersResponse, transactionsResponse, pendingResponse, liveScoringResponse] = await Promise.all([
       resolvePrimaryFranchiseId(sessionCookieValue),
       fetchMflExport('league', { JSON: '1' }, options),
       fetchMflExport('freeAgents', { JSON: '1' }, options),
@@ -438,6 +450,7 @@ export async function loadWaiversPageState(sessionCookieValue: string | null): P
       authenticated
         ? fetchMflExport('pendingWaivers', { JSON: '1' }, options)
         : Promise.resolve(null),
+      fetchMflExport('liveScoring', { JSON: '1' }, { ...options, revalidate: 75 }),
     ]);
 
     if (!leagueResponse.ok || !freeAgentsResponse.ok || !playersResponse.ok) {
@@ -448,6 +461,7 @@ export async function loadWaiversPageState(sessionCookieValue: string | null): P
         franchiseId: primary?.franchiseId ?? null,
         franchiseName: null,
         myBalance: null,
+        currentWeek: null,
         rules: null,
         freeAgents: [],
         recentClaims: [],
@@ -457,12 +471,13 @@ export async function loadWaiversPageState(sessionCookieValue: string | null): P
     }
 
     const read = (response: Response | null) => (response?.ok ? response.json().catch(() => null) : Promise.resolve(null));
-    const [league, freeAgents, players, transactions, pendingWaivers] = await Promise.all([
+    const [league, freeAgents, players, transactions, pendingWaivers, liveScoring] = await Promise.all([
       read(leagueResponse),
       read(freeAgentsResponse),
       read(playersResponse),
       read(transactionsResponse),
       pendingResponse ? read(pendingResponse) : Promise.resolve(null),
+      read(liveScoringResponse),
     ]);
 
     // Also pull FREE_AGENT activity for the recent board.
@@ -485,6 +500,7 @@ export async function loadWaiversPageState(sessionCookieValue: string | null): P
       pendingWaivers,
       primaryFranchiseId: primary?.franchiseId ?? null,
       authenticated,
+      liveScoring,
     });
   } catch {
     return {
@@ -494,6 +510,7 @@ export async function loadWaiversPageState(sessionCookieValue: string | null): P
       franchiseId: null,
       franchiseName: null,
       myBalance: null,
+      currentWeek: null,
       rules: null,
       freeAgents: [],
       recentClaims: [],
