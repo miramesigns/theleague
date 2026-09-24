@@ -21,6 +21,7 @@ test('access policy exposes only landing and authentication routes to visitors',
   assert.equal(isPublicCompanionPath('/the-league-2026-championship-belt.png'), true);
   assert.equal(isPublicCompanionPath('/the-league-2026-hero.png'), true);
   assert.equal(isPublicCompanionPath('/the-league-2026-hero-clean.png'), true);
+  assert.equal(isPublicCompanionPath('/the-league-2026-hero-new.png'), true);
 
   assert.equal(isPublicCompanionPath('/scores'), false);
   assert.equal(isPublicCompanionPath('/lineup'), false);

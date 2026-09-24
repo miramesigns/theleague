@@ -755,6 +755,14 @@ textarea {
   margin-top: 4px;
 }
 
+.landing-page {
+  padding-bottom: 40px;
+}
+
+.landing-card {
+  margin-bottom: 12px;
+}
+
 .button:disabled {
   opacity: 0.55;
 }

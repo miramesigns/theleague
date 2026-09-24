@@ -42,8 +42,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   src="/the-league-2026-hero-new.png"
                   alt="The League 2026 — Fantasy Football Championship"
                   className="site-banner-image"
-                  width={1792}
-                  height={1024}
+                  width={1672}
+                  height={941}
                   sizes="(max-width: 600px) 100vw, 848px"
                   preload
                 />
