@@ -133,6 +133,11 @@ export function AuthControls({ authenticated }: { authenticated: boolean }) {
     </div>
   ) : null;
 
+  // Landing gate already has the credential form — no floating header Sign in.
+  if (onLandingGate && !authenticated) {
+    return null;
+  }
+
   return (
     <div className="auth-controls">
       {banner?.kind === 'success' ? (

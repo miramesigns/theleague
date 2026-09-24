@@ -10,6 +10,7 @@ const PUBLIC_ASSET_PATHS = new Set([
   '/the-league-2026-championship-belt.png',
   '/the-league-2026-hero.png',
   '/the-league-2026-hero-clean.png',
+  '/the-league-2026-hero-new.png',
 ]);
 
 const CRON_PUSH_PATHS = new Set(['/api/push/poll', '/api/push/send']);
