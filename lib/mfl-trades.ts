@@ -747,7 +747,7 @@ export function resolveTradeDraftAssetLabel(id: string, nameById: Map<string, st
 
 /**
  * Prefill a counter draft from the primary franchise view: same terms as an outgoing offer.
- * You offer what you would give; you request what you would get.
+ * You give what you would offer; you get what you would request.
  */
 
 /**
