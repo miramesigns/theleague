@@ -43,7 +43,7 @@ test('cron push paths accept Bearer CRON_SECRET without session', () => {
   assert.equal(hasValidCronAuthorization('Bearer secret-value', null), false);
 });
 
-test('access policy sends unauthenticated page visits to the automatic sign-in landing', () => {
+test('access policy sends unauthenticated page visits to the sign-in landing', () => {
   assert.equal(unauthenticatedDestination('/scores'), '/?auth=open');
   assert.equal(unauthenticatedDestination('/scores/week/1/matchup/0004'), '/?auth=open');
 });

@@ -18,7 +18,7 @@ import { POST as submitLoginForm } from '../app/api/auth/login-form/route.ts';
 import { POST as submitLogoutForm } from '../app/api/auth/logout/route.ts';
 import { getSessionCookieOptions } from '../app/api/auth/login/session-cookie.ts';
 import { hasSensitiveCredentialQueryKey } from '../app/more/query-cleanup.ts';
-import { describeLoginAuthState } from '../lib/mfl-auth.ts';
+import { buildLoginRedirectPath, describeLoginAuthState } from '../lib/mfl-auth.ts';
 
 const loginConfig = {
   leagueId: '35743',
@@ -285,6 +285,14 @@ test('describeLoginAuthState uses safe banner copy and keeps the modal open on f
   assert.equal(JSON.stringify(missing).includes('password'), false);
 });
 
+test('buildLoginRedirectPath keeps failures on the public landing gate', () => {
+  assert.equal(buildLoginRedirectPath('ok'), '/scores?auth=ok');
+  assert.equal(buildLoginRedirectPath('invalid'), '/?auth=invalid');
+  assert.equal(buildLoginRedirectPath('missing'), '/?auth=missing');
+  assert.equal(buildLoginRedirectPath('unavailable'), '/?auth=unavailable');
+  assert.equal(buildLoginRedirectPath('cookie'), '/?auth=cookie');
+});
+
 test('logout form clears the companion-only MFL session and returns to scores', async () => {
   const response = await submitLogoutForm(new Request('http://10.0.0.9:3017/api/auth/logout', {
     method: 'POST',
@@ -330,19 +338,19 @@ test('login form POST redirects to scores with safe auth states and stores the s
 
     const missingResponse = await submitLoginForm(makeLoginRequest('', ''));
     assert.equal(missingResponse.status, 303);
-    assert.match(missingResponse.headers.get('location') ?? '', /\/scores\?auth=missing$/);
+    assert.match(missingResponse.headers.get('location') ?? '', /\/\?auth=missing$/);
 
     globalThis.fetch = (async () => new Response('<status>ERROR</status>', { status: 200 })) as typeof fetch;
 
     const invalidResponse = await submitLoginForm(makeLoginRequest('demo-user', 'demo-pass'));
     assert.equal(invalidResponse.status, 303);
-    assert.match(invalidResponse.headers.get('location') ?? '', /\/scores\?auth=invalid$/);
+    assert.match(invalidResponse.headers.get('location') ?? '', /\/\?auth=invalid$/);
 
     globalThis.fetch = (async () => new Response('', { status: 503 })) as typeof fetch;
 
     const unavailableResponse = await submitLoginForm(makeLoginRequest('demo-user', 'demo-pass'));
     assert.equal(unavailableResponse.status, 303);
-    assert.match(unavailableResponse.headers.get('location') ?? '', /\/scores\?auth=unavailable$/);
+    assert.match(unavailableResponse.headers.get('location') ?? '', /\/\?auth=unavailable$/);
   } finally {
     globalThis.fetch = originalFetch;
   }
