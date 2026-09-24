@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { formatMflMoney, type FreeAgentRow, type WaiversPageState } from '@/lib/mfl-waivers';
+import { getWaiverWindow } from '@/lib/waiver-window';
 
 const POSITIONS = ['ALL', 'QB', 'RB', 'WR', 'TE', 'PK', 'Def'] as const;
 
@@ -19,6 +20,7 @@ export function WaiversBoard({ state }: { state: WaiversPageState }) {
   const [notice, setNotice] = useState('');
 
   const minimumBid = state.rules?.bbidMinimum ?? 0;
+  const waiverWindow = useMemo(() => getWaiverWindow(state.currentWeek), [state.currentWeek]);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -75,7 +77,7 @@ export function WaiversBoard({ state }: { state: WaiversPageState }) {
         <div className="row">
           <div>
             <h2 className="eyebrow">FAAB / rules</h2>
-            <div className="small muted">Pulled from MFL league settings for this league.</div>
+            <div className="small muted">FAAB from MFL; claim window is league schedule.</div>
           </div>
           <span className="pill">{state.rules?.waiverType || 'Rules'}</span>
         </div>
@@ -83,8 +85,11 @@ export function WaiversBoard({ state }: { state: WaiversPageState }) {
           <div className="stat-row"><span>My balance</span><strong>{formatMflMoney(state.myBalance)}</strong></div>
           <div className="stat-row"><span>Minimum bid</span><strong>{formatMflMoney(state.rules?.bbidMinimum ?? null)}</strong></div>
           <div className="stat-row"><span>Increment</span><strong>{formatMflMoney(state.rules?.bbidIncrement ?? null)}</strong></div>
-          <div className="stat-row"><span>Tiebreaker</span><strong>{state.rules?.bbidTiebreaker || '—'}</strong></div>
-          <div className="stat-row"><span>Max rounds</span><strong>{state.rules?.maxWaiverRounds ?? '—'}</strong></div>
+          <div className="stat-row">
+            <span>Waiver window</span>
+            <strong style={{ textAlign: 'right' }}>{waiverWindow.label}</strong>
+          </div>
+          {waiverWindow.note ? <p className="small muted" style={{ margin: 0 }}>{waiverWindow.note}</p> : null}
         </div>
       </section>
 
@@ -138,7 +143,6 @@ export function WaiversBoard({ state }: { state: WaiversPageState }) {
                 <div className="small muted">{row.team} · {row.position} · {row.status}</div>
               </div>
               <div className="waiver-fa-meta">
-                <span>{formatMflMoney(row.salary)}</span>
                 <span className="pill">Claim</span>
               </div>
             </button>

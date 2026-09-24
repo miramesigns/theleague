@@ -114,11 +114,13 @@ test('parseWaiversPageState assembles a usable board', () => {
     players: { players: { player: [{ id: '1', name: 'A, B', position: 'QB', team: 'BUF' }] } },
     transactions: { transactions: { transaction: [] } },
     pendingWaivers: null,
+    liveScoring: { liveScoring: { week: '12' } },
   });
 
   assert.equal(state.ok, true);
   assert.equal(state.freeAgents[0].name, 'A, B');
   assert.equal(state.myBalance, 1);
+  assert.equal(state.currentWeek, 12);
 });
 
 test('asset tokens parse players and future picks', () => {
