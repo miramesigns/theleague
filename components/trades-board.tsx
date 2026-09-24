@@ -516,20 +516,6 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
 
           <div className="trade-draft-sides">
             <PlayerAssetPicker
-              label="You give"
-              className="trade-draft-side-give"
-              assets={offerPool}
-              selectedIds={offering}
-              onChange={setOffering}
-              valueCatalog={state.valueCatalog}
-              nameById={nameById}
-              emptyMessage="Sign in with a roster to pick assets."
-              searchPlaceholder="Search your players…"
-            />
-
-            <div className="trade-draft-sides-divider" role="separator" aria-hidden="true" />
-
-            <PlayerAssetPicker
               label={`You get from ${partnerName}`}
               className="trade-draft-side-get"
               assets={requestPool}
@@ -539,6 +525,20 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
               nameById={nameById}
               emptyMessage="Their roster is unavailable."
               searchPlaceholder="Search their players…"
+            />
+
+            <div className="trade-draft-sides-divider" role="separator" aria-hidden="true" />
+
+            <PlayerAssetPicker
+              label="You give"
+              className="trade-draft-side-give"
+              assets={offerPool}
+              selectedIds={offering}
+              onChange={setOffering}
+              valueCatalog={state.valueCatalog}
+              nameById={nameById}
+              emptyMessage="Sign in with a roster to pick assets."
+              searchPlaceholder="Search your players…"
             />
           </div>
 
