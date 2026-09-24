@@ -8,7 +8,6 @@ export default function MorePage() {
           <div className="eyebrow">More</div>
           <div className="small muted">Notifications, waivers, and standings.</div>
         </div>
-        <span className="pill">Sign in from the header</span>
       </div>
 
       <section className="panel section">
