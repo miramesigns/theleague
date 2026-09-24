@@ -12,7 +12,13 @@ export type LoginAuthState = {
 };
 
 export function buildLoginRedirectPath(auth: Exclude<LoginAuthQuery, 'open'>): string {
-  return `/scores?auth=${auth}`;
+  // Success can land on the protected scores route (cookie is set on the redirect).
+  // Failures must stay on the public landing — `/scores?auth=…` would be bounced to
+  // `/?auth=open` by the edge proxy and strip the error state.
+  if (auth === 'ok') {
+    return `/scores?auth=${auth}`;
+  }
+  return `/?auth=${auth}`;
 }
 
 export function describeLoginAuthState(auth: string | null | undefined): LoginAuthState | null {

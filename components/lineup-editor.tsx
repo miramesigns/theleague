@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { WeekPicker } from '@/components/week-picker';
@@ -149,7 +150,7 @@ export function LineupEditor({ state }: { state: LineupPageState }) {
             <div className="small" style={{ fontWeight: 700 }}>Submit Lineup</div>
             <div className="small muted">{state.message}</div>
           </div>
-          <a className="button primary" href="/scores?auth=open">Sign in</a>
+          <Link className="button primary" href="/?auth=open">Sign in</Link>
         </div>
       </main>
     );

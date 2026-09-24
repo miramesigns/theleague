@@ -743,6 +743,18 @@ textarea {
   min-width: 96px;
 }
 
+/* Suspense placeholder: reserve header space without a second Sign in button. */
+.auth-button-slot {
+  display: block;
+  min-width: 96px;
+  min-height: 44px;
+}
+
+.landing-sign-in {
+  gap: 12px;
+  margin-top: 4px;
+}
+
 .button:disabled {
   opacity: 0.55;
 }
@@ -1372,9 +1384,13 @@ textarea {
     left: 81%;
   }
 
-  .site-header .auth-button {
+  .site-header .auth-button,
+  .site-header .auth-button-slot {
     min-width: 78px;
     min-height: 38px;
+  }
+
+  .site-header .auth-button {
     padding: 8px 11px;
     font-size: 0.85rem;
     line-height: 1;

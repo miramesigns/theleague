@@ -152,7 +152,7 @@ export function ScoreBoard({
             <div className="small" style={{ fontWeight: 700 }}>Live data could not be loaded.</div>
             <div className="small muted">Use the header Sign in button, then refresh this page.</div>
           </div>
-          <a className="button primary" href="/scores?auth=open">Sign in</a>
+          <Link className="button primary" href="/?auth=open">Sign in</Link>
         </div>
       ) : null}
 
@@ -197,7 +197,7 @@ export function ScoreBoard({
             <div className="small" style={{ fontWeight: 700 }}>No matchups could be rendered.</div>
             <div className="small muted">The selected week did not match the expected 12-team / 6-matchup shape.</div>
           </div>
-          <a className="button primary" href="/scores?auth=open">Sign in</a>
+          <Link className="button primary" href="/?auth=open">Sign in</Link>
         </div>
       )}
     </section>

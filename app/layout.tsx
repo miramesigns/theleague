@@ -49,7 +49,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                 />
               </Link>
               <div className="topbar-actions">
-                <Suspense fallback={<button type="button" className="button auth-button" disabled>Sign in</button>}>
+                <Suspense fallback={<span className="auth-button-slot" aria-hidden="true" />}>
                   <AuthControls authenticated={authenticated} />
                 </Suspense>
               </div>
