@@ -63,17 +63,26 @@ function PlayerAssetPicker({
   );
 
   const needle = query.trim().toLowerCase();
-  const matches = (asset: MflAsset) =>
-    !needle || asset.label.toLowerCase().includes(needle) || asset.id.includes(needle);
 
   const availablePicks = useMemo(
-    () => picks.filter((asset) => !selectedIds.includes(asset.id)).filter(matches),
-    // matches depends on needle/query
-    [picks, selectedIds, query],
+    () =>
+      picks
+        .filter((asset) => !selectedIds.includes(asset.id))
+        .filter(
+          (asset) =>
+            !needle || asset.label.toLowerCase().includes(needle) || asset.id.includes(needle),
+        ),
+    [picks, selectedIds, needle],
   );
   const availablePlayers = useMemo(
-    () => players.filter((asset) => !selectedIds.includes(asset.id)).filter(matches),
-    [players, selectedIds, query],
+    () =>
+      players
+        .filter((asset) => !selectedIds.includes(asset.id))
+        .filter(
+          (asset) =>
+            !needle || asset.label.toLowerCase().includes(needle) || asset.id.includes(needle),
+        ),
+    [players, selectedIds, needle],
   );
 
   const renderOptionButton = (asset: MflAsset) => {
@@ -95,8 +104,8 @@ function PlayerAssetPicker({
   };
 
   return (
-    <div>
-      <div className="small muted" style={{ marginBottom: 8 }}>{label}</div>
+    <div className="trade-draft-side">
+      <div className="trade-draft-side-title">{label}</div>
       {assets.length === 0 ? (
         <p className="muted small">{emptyMessage}</p>
       ) : (
@@ -207,7 +216,7 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
   const [pendingTrade, setPendingTrade] = useState<TradeRow | null>(null);
   const draftRef = useRef<HTMLElement | null>(null);
 
-  const partnerName = partners.find((franchise) => franchise.id === partnerId)?.name || 'Partner';
+  const partnerName = partners.find((franchise) => franchise.id === partnerId)?.name || 'team';
   const isAmend = Boolean(revokeTradeId);
   const nameById = useMemo(
     () =>
@@ -483,7 +492,7 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
         ) : null}
         <div className="stack" style={{ marginTop: 12 }}>
           <label className="field-label">
-            Partner
+            Trade with
             <select
               className="field"
               value={partnerId}
@@ -503,27 +512,29 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
             </select>
           </label>
 
-          <PlayerAssetPicker
-            label="You offer"
-            assets={offerPool}
-            selectedIds={offering}
-            onChange={setOffering}
-            valueCatalog={state.valueCatalog}
-            nameById={nameById}
-            emptyMessage="Sign in with a roster to pick assets."
-            searchPlaceholder="Search your players…"
-          />
+          <div className="trade-draft-sides">
+            <PlayerAssetPicker
+              label="You give"
+              assets={offerPool}
+              selectedIds={offering}
+              onChange={setOffering}
+              valueCatalog={state.valueCatalog}
+              nameById={nameById}
+              emptyMessage="Sign in with a roster to pick assets."
+              searchPlaceholder="Search your players…"
+            />
 
-          <PlayerAssetPicker
-            label={`You request from ${partnerName}`}
-            assets={requestPool}
-            selectedIds={requesting}
-            onChange={setRequesting}
-            valueCatalog={state.valueCatalog}
-            nameById={nameById}
-            emptyMessage="Partner roster unavailable."
-            searchPlaceholder="Search their players…"
-          />
+            <PlayerAssetPicker
+              label={`You get from ${partnerName}`}
+              assets={requestPool}
+              selectedIds={requesting}
+              onChange={setRequesting}
+              valueCatalog={state.valueCatalog}
+              nameById={nameById}
+              emptyMessage="Their roster is unavailable."
+              searchPlaceholder="Search their players…"
+            />
+          </div>
 
           <div className="trade-value-help trade-value-help-draft">
             {draftValue?.hasValues ? (

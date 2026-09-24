@@ -320,7 +320,7 @@ test('parseTradesPageState resolves pending offeringteam names via league franch
   assert.doesNotMatch(state.pending[0].franchiseName, /🏆/);
 });
 
-test('counterDraftFromPendingTrade prefills give/get as You offer / You request', () => {
+test('counterDraftFromPendingTrade prefills give/get as You give / You get', () => {
   const draft = counterDraftFromPendingTrade(
     {
       id: 'pending-1',
