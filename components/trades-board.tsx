@@ -63,17 +63,26 @@ function PlayerAssetPicker({
   );
 
   const needle = query.trim().toLowerCase();
-  const matches = (asset: MflAsset) =>
-    !needle || asset.label.toLowerCase().includes(needle) || asset.id.includes(needle);
 
   const availablePicks = useMemo(
-    () => picks.filter((asset) => !selectedIds.includes(asset.id)).filter(matches),
-    // matches depends on needle/query
-    [picks, selectedIds, query],
+    () =>
+      picks
+        .filter((asset) => !selectedIds.includes(asset.id))
+        .filter(
+          (asset) =>
+            !needle || asset.label.toLowerCase().includes(needle) || asset.id.includes(needle),
+        ),
+    [picks, selectedIds, needle],
   );
   const availablePlayers = useMemo(
-    () => players.filter((asset) => !selectedIds.includes(asset.id)).filter(matches),
-    [players, selectedIds, query],
+    () =>
+      players
+        .filter((asset) => !selectedIds.includes(asset.id))
+        .filter(
+          (asset) =>
+            !needle || asset.label.toLowerCase().includes(needle) || asset.id.includes(needle),
+        ),
+    [players, selectedIds, needle],
   );
 
   const renderOptionButton = (asset: MflAsset) => {
