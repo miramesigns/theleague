@@ -158,7 +158,11 @@ function PlayerAssetPicker({
                     <span className="muted small">{players.length}</span>
                   </Button>
                 </SheetTrigger>
-                <SheetContent side="bottom" className="max-h-[85dvh] gap-3 overflow-hidden p-4">
+                <SheetContent
+                  side="bottom"
+                  className="max-h-[85dvh] gap-3 overflow-hidden p-4"
+                  onOpenAutoFocus={(event) => event.preventDefault()}
+                >
                   <SheetHeader className="p-0">
                     <SheetTitle>{label}</SheetTitle>
                     <SheetDescription>Search and add players to this side of the trade.</SheetDescription>
@@ -433,8 +437,8 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
       <Tabs value={boardTab} onValueChange={setBoardTab} className="trades-board-tabs">
         <TabsList className="w-full flex-wrap h-auto gap-1">
           <TabsTrigger value="pending">Pending</TabsTrigger>
+          <TabsTrigger value="draft">{isAmend ? 'Amend' : 'New offer'}</TabsTrigger>
           <TabsTrigger value="recent">Recent</TabsTrigger>
-          <TabsTrigger value="draft">{isAmend ? 'Amend' : 'Draft'}</TabsTrigger>
           {state.tradeBait.length > 0 ? <TabsTrigger value="bait">Bait</TabsTrigger> : null}
         </TabsList>
 
