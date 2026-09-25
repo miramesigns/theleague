@@ -2,6 +2,7 @@ const AUTH_ROUTE_PREFIX = '/api/auth/';
 const PUBLIC_ASSET_PATHS = new Set([
   '/app-icon-192.png',
   '/apple-icon.png',
+  '/apple-touch-icon.png',
   '/favicon.ico',
   '/icon.png',
   '/manifest.webmanifest',

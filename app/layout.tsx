@@ -19,6 +19,13 @@ export const metadata: Metadata = {
   description: 'Phone-first fantasy football companion for MFL leagues.',
   manifest: '/manifest.webmanifest',
   applicationName: 'MFL League Companion',
+  icons: {
+    icon: [
+      { url: '/app-icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
