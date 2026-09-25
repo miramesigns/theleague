@@ -3,6 +3,8 @@ import { formatRosterSalary, groupRosterRows } from '@/lib/mfl-roster';
 import { getMflSessionCookieValue } from '@/lib/mfl-session';
 import { loadAllRostersPageState } from '@/lib/mfl-all-rosters';
 import { AutoRefresh } from '@/components/auto-refresh';
+import { FranchisePicker } from '@/components/franchise-picker';
+import { PlayerInfoChip } from '@/components/player-info-chip';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -35,13 +37,10 @@ export default async function AllRostersPage({
       {!state.ok ? <section className="panel section"><p className="muted">{state.message}</p></section> : (
         <>
           <section className="panel section all-rosters-controls">
-            <form action="/all-rosters" method="get" className="team-picker">
-              <label htmlFor="franchise">Franchise</label>
-              <select id="franchise" name="franchise" defaultValue={state.selectedFranchiseId ?? ''}>
-                {state.franchises.map((franchise) => <option key={franchise.id} value={franchise.id}>{franchise.name}</option>)}
-              </select>
-              <button className="button" type="submit">View roster</button>
-            </form>
+            <FranchisePicker
+              franchises={state.franchises}
+              selectedFranchiseId={state.selectedFranchiseId}
+            />
             <AutoRefresh />
           </section>
 
@@ -61,7 +60,22 @@ export default async function AllRostersPage({
                    <th colSpan={6} scope="colgroup"><span>{group.position}</span><span>{group.rows.length} players</span></th>
                  </tr>
                  {group.rows.map((player) => <tr key={player.id}>
-                   <td data-label="Player"><strong>{player.name}</strong><span className="roster-status">{player.status}</span></td>
+                   <td data-label="Player">
+                     <PlayerInfoChip
+                       player={{
+                         name: player.name,
+                         position: player.position,
+                         team: player.team,
+                         status: player.status,
+                         byeWeek: player.byeWeek,
+                         salary: formatRosterSalary(player.salary),
+                         ytdPoints: player.ytdPoints,
+                         contractYear: player.contractYear,
+                       }}
+                       triggerClassName="player-info-chip-roster"
+                     />
+                     <span className="roster-status">{player.status}</span>
+                   </td>
                   <td data-label="NFL"><strong>{display(player.team)} / {display(player.position)}</strong></td>
                   <td data-label="YTD">{display(player.ytdPoints)}</td>
                   <td data-label="Bye">{display(player.byeWeek)}</td>
@@ -74,7 +88,22 @@ export default async function AllRostersPage({
                  {groups.map((group) => <div key={`${group.position}-compact`} className="roster-position-group">
                    <div className="roster-position-header"><strong>{group.position}</strong><span>{group.rows.length} players</span></div>
                    {group.rows.map((player) => <div key={player.id} className="roster-compact-row">
-                   <div className="roster-compact-main"><strong>{player.name}</strong><span><strong>{display(player.team)} · {display(player.position)}</strong></span></div>
+                   <div className="roster-compact-main">
+                     <PlayerInfoChip
+                       player={{
+                         name: player.name,
+                         position: player.position,
+                         team: player.team,
+                         status: player.status,
+                         byeWeek: player.byeWeek,
+                         salary: formatRosterSalary(player.salary),
+                         ytdPoints: player.ytdPoints,
+                         contractYear: player.contractYear,
+                       }}
+                       triggerClassName="player-info-chip-roster"
+                     />
+                     <span><strong>{display(player.team)} · {display(player.position)}</strong></span>
+                   </div>
                    <div className="roster-compact-metrics"><span>YTD {display(player.ytdPoints)}</span><span>Bye {display(player.byeWeek)}</span><span>Salary {formatRosterSalary(player.salary)}</span><span>Contract {display(player.contractYear)}</span></div>
                    </div>)}
                  </div>)}

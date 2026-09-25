@@ -3,6 +3,9 @@
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
 
 import type { LeagueNotification, NotificationsPageState } from '@/lib/mfl-notifications';
+import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
 
 const READ_KEY = 'mfl-companion-notification-reads';
 const PREFS_KEY = 'mfl-companion-notification-prefs';
@@ -147,7 +150,9 @@ export function NotificationsCenter({ state }: { state: NotificationsPageState }
             <h2 className="eyebrow">Alerts</h2>
             <div className="small muted">{unreadCount} unread · {visible.length} visible</div>
           </div>
-          <button type="button" className="button ghost" onClick={markAllRead}>Mark all read</button>
+          <Button type="button" variant="outline" onClick={markAllRead}>
+            Mark all read
+          </Button>
         </div>
         <div className="notification-prefs">
           {([
@@ -158,8 +163,12 @@ export function NotificationsCenter({ state }: { state: NotificationsPageState }
             ['league', 'League'],
           ] as const).map(([key, label]) => (
             <label key={key} className="pref-chip">
-              <input type="checkbox" checked={prefs[key]} onChange={(event) => updatePref(key, event.target.checked)} />
-              {label}
+              <Switch
+                checked={prefs[key]}
+                onCheckedChange={(checked) => updatePref(key, checked)}
+                aria-label={label}
+              />
+              <span>{label}</span>
             </label>
           ))}
         </div>
@@ -179,14 +188,16 @@ export function NotificationsCenter({ state }: { state: NotificationsPageState }
               >
                 <div className="notification-row-top">
                   <strong>{entry.title}</strong>
-                  <span className="pill">{entry.category}</span>
+                  <Badge variant="secondary">{entry.category}</Badge>
                 </div>
                 <div className="small">{entry.body}</div>
                 <div className="small muted">{entry.timeLabel}</div>
               </a>
             );
           })}
-          {visible.length === 0 ? <p className="muted small">No alerts for the selected filters.</p> : null}
+          {visible.length === 0 ? (
+            <p className="muted small">No alerts for the selected filters.</p>
+          ) : null}
         </div>
       </section>
     </div>

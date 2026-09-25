@@ -1,4 +1,5 @@
 import { AutoRefresh } from '@/components/auto-refresh';
+import { PlayerInfoChip } from '@/components/player-info-chip';
 import type { MatchupDetailState, MatchupTeam, MatchupPlayer } from '@/lib/mfl-scores';
 import { groupPlayersByPosition } from '@/lib/player-detail';
 import { MatchupSummary } from '@/components/matchup-summary';
@@ -21,7 +22,17 @@ function PlayerRow({ player, source }: { player: MatchupPlayer; source: MatchupD
   return (
     <div className="player-row">
       <div className="player-main">
-        <div className="player-name">{player.name}</div>
+        <PlayerInfoChip
+          player={{
+            name: player.name,
+            position: player.position,
+            team: player.nflTeam,
+            status: player.status,
+            score: source === 'schedule' ? null : player.score,
+            projection: player.projection,
+          }}
+          triggerClassName="player-info-chip-matchup"
+        />
         <div className="player-meta">{player.position} · {player.id}</div>
       </div>
       <div className="player-side">

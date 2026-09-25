@@ -1,5 +1,16 @@
 "use client";
 
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
+
 export function ConfirmDialog({
   title,
   message,
@@ -17,24 +28,29 @@ export function ConfirmDialog({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
-  if (!open) {
-    return null;
-  }
-
   return (
-    <div className="modal-backdrop" role="presentation" onClick={onCancel}>
-      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title" onClick={(event) => event.stopPropagation()}>
-        <h3 id="confirm-title">{title}</h3>
-        <p className="muted small">{message}</p>
-        <div className="actions" style={{ marginTop: 14 }}>
-          <button type="button" className="button ghost" onClick={onCancel} disabled={busy}>
+    <AlertDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next && !busy) {
+          onCancel();
+        }
+      }}
+    >
+      <AlertDialogContent size="default" className="sm:max-w-sm">
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription>{message}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={busy} onClick={onCancel}>
             Cancel
-          </button>
-          <button type="button" className="button primary" onClick={onConfirm} disabled={busy}>
+          </AlertDialogCancel>
+          <Button type="button" onClick={onConfirm} disabled={busy}>
             {busy ? 'Working...' : confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

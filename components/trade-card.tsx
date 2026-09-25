@@ -1,6 +1,8 @@
 "use client";
 
-import { formatMflAssetLabels } from '@/lib/mfl-assets';
+import { EllipsisIcon } from 'lucide-react';
+
+import type { MflAsset } from '@/lib/mfl-assets';
 import { tradeCardSides, type TradeRow } from '@/lib/mfl-trades';
 import {
   FANTASYCALC_TRADE_CALCULATOR_URL,
@@ -9,6 +11,14 @@ import {
   KTC_TRADE_CALCULATOR_URL,
   type TradeValueRead,
 } from '@/lib/trade-value-help';
+import { PlayerInfoChip } from '@/components/player-info-chip';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 
 function TradeValueHelp({
   valueRead,
@@ -67,6 +77,30 @@ function playerLabelsForManual(trade: TradeRow): string[] {
     .map((asset) => asset.label);
 }
 
+function TradeAssetList({ assets }: { assets: MflAsset[] }) {
+  if (assets.length === 0) {
+    return <div className="trade-assets muted">—</div>;
+  }
+
+  return (
+    <div className="trade-assets trade-asset-chip-list">
+      {assets.map((asset) =>
+        asset.kind === 'player' ? (
+          <PlayerInfoChip
+            key={asset.id}
+            player={{ name: asset.label }}
+            triggerClassName="player-info-chip-inline"
+          />
+        ) : (
+          <span key={asset.id} className="trade-asset-static">
+            {asset.label}
+          </span>
+        ),
+      )}
+    </div>
+  );
+}
+
 function TradeParties({
   sides,
 }: {
@@ -79,7 +113,7 @@ function TradeParties({
           <div className="trade-franchise">{sides.left.franchiseName}</div>
         ) : null}
         <div className="trade-direction">{sides.left.label}</div>
-        <div className="trade-assets">{formatMflAssetLabels(sides.left.assets)}</div>
+        <TradeAssetList assets={sides.left.assets} />
       </div>
       <div className="trade-arrow" aria-hidden="true">→</div>
       <div className="trade-side trade-side-gives">
@@ -87,7 +121,7 @@ function TradeParties({
           <div className="trade-franchise">{sides.right.franchiseName}</div>
         ) : null}
         <div className="trade-direction">{sides.right.label}</div>
-        <div className="trade-assets">{formatMflAssetLabels(sides.right.assets)}</div>
+        <TradeAssetList assets={sides.right.assets} />
       </div>
     </div>
   );
@@ -119,6 +153,11 @@ export function TradeCard({
   const hasOutgoingActions = Boolean(onRevoke || onAmend);
   const showActions = isPending && (hasIncomingActions || hasOutgoingActions);
   const sides = tradeCardSides(trade, primaryFranchiseId);
+  const overflowActions = [
+    onCounter ? { label: 'Counter', onClick: onCounter } : null,
+    onAmend ? { label: 'Amend & resend', onClick: onAmend } : null,
+    onRevoke ? { label: 'Cancel offer', onClick: onRevoke } : null,
+  ].filter((action): action is { label: string; onClick: () => void } => Boolean(action));
 
   return (
     <article className={`trade-card${isPending ? ' trade-card-pending' : ''}`}>
@@ -130,8 +169,8 @@ export function TradeCard({
         <span>{trade.timeLabel}</span>
         {trade.expiresLabel ? <span>· expires {trade.expiresLabel}</span> : null}
         {trade.byCommish ? <span className="trade-commish">commissioner assisted</span> : null}
-        {isPending ? <span className="trade-status-pending">Pending</span> : null}
-        {hasOutgoingActions ? <span className="trade-status-pending">Your offer</span> : null}
+        {isPending ? <Badge variant="secondary">Pending</Badge> : null}
+        {hasOutgoingActions ? <Badge variant="outline">Your offer</Badge> : null}
       </div>
       {trade.valueRead ? (
         <TradeValueHelp valueRead={trade.valueRead} playerNames={playerLabelsForManual(trade)} />
@@ -139,29 +178,42 @@ export function TradeCard({
       {showActions ? (
         <div className="trade-actions">
           {onAccept ? (
-            <button type="button" className="button primary trade-action-btn" onClick={onAccept}>
+            <Button type="button" className="trade-action-btn" onClick={onAccept}>
               Accept
-            </button>
+            </Button>
           ) : null}
           {onDecline ? (
-            <button type="button" className="button ghost trade-action-btn" onClick={onDecline}>
+            <Button type="button" variant="outline" className="trade-action-btn" onClick={onDecline}>
               Decline
-            </button>
+            </Button>
           ) : null}
-          {onCounter ? (
-            <button type="button" className="button ghost trade-action-btn" onClick={onCounter}>
-              Counter
-            </button>
-          ) : null}
-          {onAmend ? (
-            <button type="button" className="button primary trade-action-btn" onClick={onAmend}>
-              Amend &amp; resend
-            </button>
-          ) : null}
-          {onRevoke ? (
-            <button type="button" className="button ghost trade-action-btn" onClick={onRevoke}>
-              Cancel offer
-            </button>
+          {overflowActions.length > 0 ? (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="trade-action-more"
+                  aria-label="More trade actions"
+                >
+                  <EllipsisIcon />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-44 p-1.5">
+                {overflowActions.map((action) => (
+                  <Button
+                    key={action.label}
+                    type="button"
+                    variant="ghost"
+                    className="w-full justify-start"
+                    onClick={action.onClick}
+                  >
+                    {action.label}
+                  </Button>
+                ))}
+              </PopoverContent>
+            </Popover>
           ) : null}
         </div>
       ) : null}

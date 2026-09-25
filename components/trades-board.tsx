@@ -2,9 +2,30 @@
 
 import { useRouter } from 'next/navigation';
 import { useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
 
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { CompletedTradeCard, TradeCard } from '@/components/trade-card';
+import { PlayerInfoChip } from '@/components/player-info-chip';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { partitionTradePickerAssets, type MflAsset } from '@/lib/mfl-assets';
 import {
   amendDraftFromPendingTrade,
@@ -50,6 +71,7 @@ function PlayerAssetPicker({
   className?: string;
 }) {
   const [query, setQuery] = useState('');
+  const [sheetOpen, setSheetOpen] = useState(false);
   const { picks, players } = useMemo(() => partitionTradePickerAssets(assets), [assets]);
 
   const selected = useMemo(
@@ -87,21 +109,24 @@ function PlayerAssetPicker({
     [players, selectedIds, needle],
   );
 
+  const addAsset = (asset: MflAsset) => {
+    onChange([...selectedIds, asset.id]);
+    setQuery('');
+  };
+
   const renderOptionButton = (asset: MflAsset) => {
     const fcValue = valueCatalog?.byMflId[asset.id]?.value;
     return (
-      <button
+      <Button
         key={asset.id}
         type="button"
-        className="button ghost trade-asset-option"
-        onClick={() => {
-          onChange([...selectedIds, asset.id]);
-          setQuery('');
-        }}
+        variant="ghost"
+        className="trade-asset-option w-full justify-start"
+        onClick={() => addAsset(asset)}
       >
         {asset.label}
         {typeof fcValue === 'number' ? ` · ${formatValueNumber(fcValue)}` : ''}
-      </button>
+      </Button>
     );
   };
 
@@ -112,7 +137,6 @@ function PlayerAssetPicker({
         <p className="muted small">{emptyMessage}</p>
       ) : (
         <div className="trade-asset-picker">
-          {/* Draft picks stay above the player list so they are not buried under a long roster/FA scroll. */}
           {availablePicks.length > 0 ? (
             <div className="trade-asset-group">
               <div className="small muted trade-asset-group-label">Draft picks</div>
@@ -125,45 +149,40 @@ function PlayerAssetPicker({
             </div>
           ) : null}
 
-          <input
-            className="field"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={searchPlaceholder}
-            aria-label={label}
-          />
-
           {players.length > 0 ? (
             <div className="trade-asset-group">
               <div className="small muted trade-asset-group-label">Players</div>
-              {query.trim() || availablePlayers.length <= 12 ? (
-                <div className="trade-asset-search-results">
-                  {availablePlayers.map(renderOptionButton)}
-                  {availablePlayers.length === 0 ? <p className="muted small">No matching players.</p> : null}
-                </div>
-              ) : (
-                <select
-                  className="field"
-                  value=""
-                  onChange={(event) => {
-                    const id = event.target.value;
-                    if (id) onChange([...selectedIds, id]);
-                    event.target.value = '';
-                  }}
+              <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+                <SheetTrigger asChild>
+                  <Button type="button" variant="outline" className="w-full justify-between">
+                    Browse players…
+                    <span className="muted small">{players.length}</span>
+                  </Button>
+                </SheetTrigger>
+                <SheetContent
+                  side="bottom"
+                  className="max-h-[85dvh] gap-3 overflow-hidden p-4"
+                  onOpenAutoFocus={(event) => event.preventDefault()}
                 >
-                  <option value="">Select a player…</option>
-                  {players
-                    .filter((asset) => !selectedIds.includes(asset.id))
-                    .map((asset) => {
-                      const fcValue = valueCatalog?.byMflId[asset.id]?.value;
-                      return (
-                        <option key={asset.id} value={asset.id}>
-                          {asset.label}{typeof fcValue === 'number' ? ` · ${formatValueNumber(fcValue)}` : ''}
-                        </option>
-                      );
-                    })}
-                </select>
-              )}
+                  <SheetHeader className="p-0">
+                    <SheetTitle>{label}</SheetTitle>
+                    <SheetDescription>Search and add players to this side of the trade.</SheetDescription>
+                  </SheetHeader>
+                  <Input
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder={searchPlaceholder}
+                    aria-label={label}
+                    className="min-h-11"
+                  />
+                  <div className="trade-asset-search-results max-h-[50dvh] overflow-auto px-1">
+                    {availablePlayers.map(renderOptionButton)}
+                    {availablePlayers.length === 0 ? (
+                      <p className="muted small">No matching players.</p>
+                    ) : null}
+                  </div>
+                </SheetContent>
+              </Sheet>
             </div>
           ) : null}
 
@@ -177,7 +196,14 @@ function PlayerAssetPicker({
                 const fcValue = valueCatalog?.byMflId[asset.id]?.value;
                 return (
                   <span key={asset.id} className="trade-asset-pill">
-                    {asset.label}
+                    {asset.kind === 'player' ? (
+                      <PlayerInfoChip
+                        player={{ name: asset.label }}
+                        triggerClassName="player-info-chip-inline"
+                      />
+                    ) : (
+                      asset.label
+                    )}
                     {typeof fcValue === 'number' ? ` · ${formatValueNumber(fcValue)}` : ''}
                     <button
                       type="button"
@@ -216,6 +242,7 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
   const [notice, setNotice] = useState('');
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [pendingTrade, setPendingTrade] = useState<TradeRow | null>(null);
+  const [boardTab, setBoardTab] = useState(state.pending.length > 0 ? 'pending' : 'draft');
   const draftRef = useRef<HTMLElement | null>(null);
 
   const partnerName = partners.find((franchise) => franchise.id === partnerId)?.name || 'team';
@@ -318,6 +345,7 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
         setNotice(payload?.message || 'Trade could not be submitted.');
       } else {
         setNotice(payload?.message || 'Trade submitted to MFL.');
+        toast.success(payload?.message || 'Trade submitted to MFL.');
         setOffering([]);
         setRequesting([]);
         setComments('');
@@ -352,6 +380,7 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
         setNotice(payload?.message || `Trade could not be ${pendingAction === 'reject' ? 'declined' : `${pendingAction}ed`}.`);
       } else {
         setNotice(payload?.message || `Trade ${pendingAction === 'reject' ? 'declined' : `${pendingAction}ed`}.`);
+        toast.success(payload?.message || `Trade ${pendingAction === 'reject' ? 'declined' : `${pendingAction}ed`}.`);
         router.refresh();
       }
     } catch {
@@ -369,10 +398,11 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
     setOffering(draft.offeringPlayerIds);
     setRequesting(draft.requestingPlayerIds);
     clearAmendMode();
+    setBoardTab('draft');
     setNotice('Counter started in Draft trade offer — edit then confirm to send to MFL.');
-    requestAnimationFrame(() => {
+    window.setTimeout(() => {
       draftRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
+    }, 80);
   };
 
   const startAmend = (trade: TradeRow) => {
@@ -382,10 +412,11 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
     setRequesting(draft.requestingPlayerIds);
     if (draft.expiresDays) setExpiresDays(String(draft.expiresDays));
     setRevokeTradeId(draft.revokeTradeId);
+    setBoardTab('draft');
     setNotice('Amend mode: edit assets, then confirm to revoke the old offer and resend.');
-    requestAnimationFrame(() => {
+    window.setTimeout(() => {
       draftRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
+    }, 80);
   };
 
   const pendingResponseTitle =
@@ -411,194 +442,229 @@ export function TradesBoard({ state }: { state: TradesPageState }) {
 
   return (
     <div className="stack trades-board">
-      {state.pending.length > 0 ? (
-        <section className="panel section">
-          <h2 className="eyebrow">Pending offers</h2>
-          <div className="trade-list">
-            {state.pending.map((trade) => {
-              const outgoing = isOutgoingPendingTrade(trade, state.franchiseId);
-              const incoming = isIncomingPendingTrade(trade, state.franchiseId);
-              return (
-                <TradeCard
-                  key={trade.id}
-                  trade={trade}
-                  primaryFranchiseId={state.franchiseId}
-                  onAccept={
-                    incoming
-                      ? () => {
-                          setPendingTrade(trade);
-                          setPendingAction('accept');
-                        }
-                      : undefined
-                  }
-                  onDecline={
-                    incoming
-                      ? () => {
-                          setPendingTrade(trade);
-                          setPendingAction('reject');
-                        }
-                      : undefined
-                  }
-                  onCounter={incoming ? () => startCounter(trade) : undefined}
-                  onAmend={outgoing && trade.mflTradeId ? () => startAmend(trade) : undefined}
-                  onRevoke={
-                    outgoing && trade.mflTradeId
-                      ? () => {
-                          setPendingTrade(trade);
-                          setPendingAction('revoke');
-                        }
-                      : undefined
-                  }
-                />
-              );
-            })}
-          </div>
-        </section>
-      ) : (
-        <section className="panel section">
-          <h2 className="eyebrow">Pending offers</h2>
-          <p className="small muted" style={{ marginTop: 8 }}>
-            No pending trades returned for this session. MFL only exposes pendingTrades to authenticated league members.
-          </p>
-        </section>
-      )}
+      <Tabs value={boardTab} onValueChange={setBoardTab} className="trades-board-tabs">
+        <TabsList className="w-full flex-wrap h-auto gap-1">
+          <TabsTrigger value="pending">Pending</TabsTrigger>
+          <TabsTrigger value="draft">{isAmend ? 'Amend' : 'New offer'}</TabsTrigger>
+          <TabsTrigger value="recent">Recent</TabsTrigger>
+          {state.tradeBait.length > 0 ? <TabsTrigger value="bait">Bait</TabsTrigger> : null}
+        </TabsList>
 
-      <RecentTradesSection recent={state.recent} primaryFranchiseId={state.franchiseId} />
-
-      {state.tradeBait.length > 0 ? (
-        <section className="panel section">
-          <h2 className="eyebrow">Trade bait</h2>
-          <div className="stack" style={{ marginTop: 10 }}>
-            {state.tradeBait.map((bait) => (
-              <div key={bait.id} className="activity-row">
-                <strong>{bait.summary}</strong>
+        <TabsContent value="pending" className="mt-3">
+          {state.pending.length > 0 ? (
+            <section className="panel section">
+              <h2 className="eyebrow">Pending offers</h2>
+              <div className="trade-list">
+                {state.pending.map((trade) => {
+                  const outgoing = isOutgoingPendingTrade(trade, state.franchiseId);
+                  const incoming = isIncomingPendingTrade(trade, state.franchiseId);
+                  return (
+                    <TradeCard
+                      key={trade.id}
+                      trade={trade}
+                      primaryFranchiseId={state.franchiseId}
+                      onAccept={
+                        incoming
+                          ? () => {
+                              setPendingTrade(trade);
+                              setPendingAction('accept');
+                            }
+                          : undefined
+                      }
+                      onDecline={
+                        incoming
+                          ? () => {
+                              setPendingTrade(trade);
+                              setPendingAction('reject');
+                            }
+                          : undefined
+                      }
+                      onCounter={incoming ? () => startCounter(trade) : undefined}
+                      onAmend={outgoing && trade.mflTradeId ? () => startAmend(trade) : undefined}
+                      onRevoke={
+                        outgoing && trade.mflTradeId
+                          ? () => {
+                              setPendingTrade(trade);
+                              setPendingAction('revoke');
+                            }
+                          : undefined
+                      }
+                    />
+                  );
+                })}
               </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      <section className="panel section" id="draft-trade-offer" ref={draftRef}>
-        <h2 className="eyebrow">{isAmend ? 'Amend & resend offer' : 'Draft trade offer'}</h2>
-        <p className="small muted">
-          {isAmend
-            ? 'Editing an outgoing offer. Confirming will revoke the old pending trade on MFL, then submit the new terms.'
-            : 'Compose an offer, then confirm to submit it live to MFL.'}
-        </p>
-        {isAmend ? (
-          <div className="actions" style={{ marginTop: 8 }}>
-            <button type="button" className="button ghost" onClick={clearAmendMode}>
-              Cancel amend
-            </button>
-          </div>
-        ) : null}
-        <div className="stack" style={{ marginTop: 12 }}>
-          <label className="field-label">
-            Trade with
-            <select
-              className="field"
-              value={partnerId}
-              disabled={isAmend}
-              onChange={(event) => {
-                const nextPartner = event.target.value;
-                setPartnerId(nextPartner);
-                const nextPoolIds = new Set(
-                  (state.rosterAssetsByFranchiseId[nextPartner] ?? []).map((asset) => asset.id),
-                );
-                setRequesting((current) => current.filter((id) => nextPoolIds.has(id)));
-              }}
-            >
-              {partners.map((franchise) => (
-                <option key={franchise.id} value={franchise.id}>{franchise.name}</option>
-              ))}
-            </select>
-          </label>
-
-          <div className="trade-draft-sides">
-            <PlayerAssetPicker
-              label={`You get from ${partnerName}`}
-              className="trade-draft-side-get"
-              assets={requestPool}
-              selectedIds={requesting}
-              onChange={setRequesting}
-              valueCatalog={state.valueCatalog}
-              nameById={nameById}
-              emptyMessage="Their roster is unavailable."
-              searchPlaceholder="Search their players…"
-            />
-
-            <div className="trade-draft-sides-divider" role="separator" aria-hidden="true" />
-
-            <PlayerAssetPicker
-              label="You give"
-              className="trade-draft-side-give"
-              assets={offerPool}
-              selectedIds={offering}
-              onChange={setOffering}
-              valueCatalog={state.valueCatalog}
-              nameById={nameById}
-              emptyMessage="Sign in with a roster to pick assets."
-              searchPlaceholder="Search your players…"
-            />
-          </div>
-
-          <div className="trade-value-help trade-value-help-draft">
-            {draftValue?.hasValues ? (
-              <>
-                <div className="trade-value-row">
-                  <span className="trade-value-label">{draftValue.label}</span>
-                  <span className="trade-value-delta">{formatDelta(draftValue.delta)}</span>
-                </div>
-                <div className="trade-value-sides">
-                  <span>You give {formatValueNumber(draftValue.giveTotal)}</span>
-                  <span aria-hidden="true">·</span>
-                  <span>You get {formatValueNumber(draftValue.getTotal)}</span>
-                </div>
-                {draftValue.misses.length > 0 ? (
-                  <p className="trade-value-misses small muted">Unmatched: {draftValue.misses.join(' • ')}</p>
-                ) : null}
-              </>
-            ) : (
-              <p className="small muted" style={{ margin: 0 }}>
-                Select assets to see FantasyCalc side totals.
+            </section>
+          ) : (
+            <section className="panel section">
+              <h2 className="eyebrow">Pending offers</h2>
+              <p className="small muted" style={{ marginTop: 8 }}>
+                No pending trades returned for this session. MFL only exposes pendingTrades to authenticated league members.
               </p>
-            )}
-            <div className="trade-value-links">
-              <a className="button ghost trade-ext-link" href={KTC_TRADE_CALCULATOR_URL} target="_blank" rel="noreferrer">
-                KeepTradeCut
-              </a>
-              <a className="button ghost trade-ext-link" href={FANTASYCALC_TRADE_CALCULATOR_URL} target="_blank" rel="noreferrer">
-                FantasyCalc
-              </a>
-            </div>
-            {state.valueCatalog?.settingsNote ? (
-              <p className="trade-value-settings small muted">{state.valueCatalog.settingsNote}</p>
+            </section>
+          )}
+        </TabsContent>
+
+        <TabsContent value="recent" className="mt-3">
+          <RecentTradesSection recent={state.recent} primaryFranchiseId={state.franchiseId} />
+        </TabsContent>
+
+        {state.tradeBait.length > 0 ? (
+          <TabsContent value="bait" className="mt-3">
+            <section className="panel section">
+              <h2 className="eyebrow">Trade bait</h2>
+              <div className="stack" style={{ marginTop: 10 }}>
+                {state.tradeBait.map((bait) => (
+                  <div key={bait.id} className="activity-row">
+                    <strong>{bait.summary}</strong>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </TabsContent>
+        ) : null}
+
+        <TabsContent value="draft" className="mt-3">
+          <section className="panel section" id="draft-trade-offer" ref={draftRef}>
+            <h2 className="eyebrow">{isAmend ? 'Amend & resend offer' : 'Draft trade offer'}</h2>
+            <p className="small muted">
+              {isAmend
+                ? 'Editing an outgoing offer. Confirming will revoke the old pending trade on MFL, then submit the new terms.'
+                : 'Compose an offer, then confirm to submit it live to MFL.'}
+            </p>
+            {isAmend ? (
+              <div className="actions" style={{ marginTop: 8 }}>
+                <Button type="button" variant="outline" onClick={clearAmendMode}>
+                  Cancel amend
+                </Button>
+              </div>
             ) : null}
-          </div>
+            <div className="stack" style={{ marginTop: 12 }}>
+              <div className="field-label stack gap-1.5">
+                <Label htmlFor="trade-partner">Trade with</Label>
+                <Select
+                  value={partnerId || undefined}
+                  disabled={isAmend}
+                  onValueChange={(nextPartner) => {
+                    setPartnerId(nextPartner);
+                    const nextPoolIds = new Set(
+                      (state.rosterAssetsByFranchiseId[nextPartner] ?? []).map((asset) => asset.id),
+                    );
+                    setRequesting((current) => current.filter((id) => nextPoolIds.has(id)));
+                  }}
+                >
+                  <SelectTrigger id="trade-partner" className="field w-full min-w-0">
+                    <SelectValue placeholder="Select partner" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {partners.map((franchise) => (
+                      <SelectItem key={franchise.id} value={franchise.id}>
+                        {franchise.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-          <label className="field-label">
-            Expires in days
-            <input className="field" type="number" min={1} max={30} value={expiresDays} onChange={(event) => setExpiresDays(event.target.value)} />
-          </label>
+              <div className="trade-draft-sides">
+                <PlayerAssetPicker
+                  label={`You get from ${partnerName}`}
+                  className="trade-draft-side-get"
+                  assets={requestPool}
+                  selectedIds={requesting}
+                  onChange={setRequesting}
+                  valueCatalog={state.valueCatalog}
+                  nameById={nameById}
+                  emptyMessage="Their roster is unavailable."
+                  searchPlaceholder="Search their players…"
+                />
 
-          <label className="field-label">
-            Comments
-            <input className="field" value={comments} onChange={(event) => setComments(event.target.value)} maxLength={280} />
-          </label>
+                <div className="trade-draft-sides-divider" role="separator" aria-hidden="true" />
 
-          <div className="actions">
-            <button
-              type="button"
-              className="button primary"
-              onClick={() => setReviewOpen(true)}
-              disabled={!partnerId || (offering.length === 0 && requesting.length === 0)}
-            >
-              {isAmend ? 'Review amend & resend' : 'Review offer'}
-            </button>
-          </div>
-          {notice ? <p className="small muted" role="status">{notice}</p> : null}
-        </div>
-      </section>
+                <PlayerAssetPicker
+                  label="You give"
+                  className="trade-draft-side-give"
+                  assets={offerPool}
+                  selectedIds={offering}
+                  onChange={setOffering}
+                  valueCatalog={state.valueCatalog}
+                  nameById={nameById}
+                  emptyMessage="Sign in with a roster to pick assets."
+                  searchPlaceholder="Search your players…"
+                />
+              </div>
+
+              <div className="trade-value-help trade-value-help-draft">
+                {draftValue?.hasValues ? (
+                  <>
+                    <div className="trade-value-row">
+                      <span className="trade-value-label">{draftValue.label}</span>
+                      <span className="trade-value-delta">{formatDelta(draftValue.delta)}</span>
+                    </div>
+                    <div className="trade-value-sides">
+                      <span>You give {formatValueNumber(draftValue.giveTotal)}</span>
+                      <span aria-hidden="true">·</span>
+                      <span>You get {formatValueNumber(draftValue.getTotal)}</span>
+                    </div>
+                    {draftValue.misses.length > 0 ? (
+                      <p className="trade-value-misses small muted">Unmatched: {draftValue.misses.join(' • ')}</p>
+                    ) : null}
+                  </>
+                ) : (
+                  <p className="small muted" style={{ margin: 0 }}>
+                    Select assets to see FantasyCalc side totals.
+                  </p>
+                )}
+                <div className="trade-value-links">
+                  <a className="button ghost trade-ext-link" href={KTC_TRADE_CALCULATOR_URL} target="_blank" rel="noreferrer">
+                    KeepTradeCut
+                  </a>
+                  <a className="button ghost trade-ext-link" href={FANTASYCALC_TRADE_CALCULATOR_URL} target="_blank" rel="noreferrer">
+                    FantasyCalc
+                  </a>
+                </div>
+                {state.valueCatalog?.settingsNote ? (
+                  <p className="trade-value-settings small muted">{state.valueCatalog.settingsNote}</p>
+                ) : null}
+              </div>
+
+              <div className="field-label stack gap-1.5">
+                <Label htmlFor="trade-expires">Expires in days</Label>
+                <Input
+                  id="trade-expires"
+                  className="field min-h-11"
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={expiresDays}
+                  onChange={(event) => setExpiresDays(event.target.value)}
+                />
+              </div>
+
+              <div className="field-label stack gap-1.5">
+                <Label htmlFor="trade-comments">Comments</Label>
+                <Input
+                  id="trade-comments"
+                  className="field min-h-11"
+                  value={comments}
+                  onChange={(event) => setComments(event.target.value)}
+                  maxLength={280}
+                />
+              </div>
+
+              <div className="actions">
+                <Button
+                  type="button"
+                  onClick={() => setReviewOpen(true)}
+                  disabled={!partnerId || (offering.length === 0 && requesting.length === 0)}
+                >
+                  {isAmend ? 'Review amend & resend' : 'Review offer'}
+                </Button>
+              </div>
+              {notice ? <p className="small muted" role="status">{notice}</p> : null}
+            </div>
+          </section>
+        </TabsContent>
+      </Tabs>
 
       <ConfirmDialog
         open={reviewOpen}
@@ -655,13 +721,14 @@ function RecentTradesSection({
         {recent.length === 0 ? <p className="muted small">No completed trades found.</p> : null}
       </div>
       {hasMore ? (
-        <button
+        <Button
           type="button"
-          className="button ghost trade-show-more"
+          variant="outline"
+          className="trade-show-more"
           onClick={() => setExpanded((v) => !v)}
         >
           {expanded ? 'Show less' : `Show all ${recent.length} trades`}
-        </button>
+        </Button>
       ) : null}
     </section>
   );

@@ -7,7 +7,12 @@ import './globals.css';
 import { AuthControls } from '@/components/auth-controls';
 import { BottomTabs } from '@/components/bottom-tabs';
 import { PullToRefresh } from '@/components/pull-to-refresh';
+import { Toaster } from '@/components/ui/sonner';
 import { getMflSessionCookieValue } from '@/lib/mfl-session';
+import { Geist } from 'next/font/google';
+import { cn } from '@/lib/utils';
+
+const geist = Geist({ subsets: ['latin'], variable: '--font-sans' });
 
 export const metadata: Metadata = {
   title: 'MFL League Companion',
@@ -32,7 +37,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const authenticated = Boolean(await getMflSessionCookieValue());
 
   return (
-    <html lang="en">
+    <html lang="en" className={cn('dark font-sans', geist.variable)}>
       <body>
         <div className="app-shell">
           <div className="page">
@@ -59,6 +64,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           </div>
         </div>
         <BottomTabs />
+        <Toaster theme="dark" richColors position="top-center" closeButton />
       </body>
     </html>
   );

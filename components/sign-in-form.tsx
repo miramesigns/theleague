@@ -1,5 +1,9 @@
 import type { Ref } from 'react';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+
 type SignInFormProps = {
   usernameId: string;
   passwordId: string;
@@ -15,31 +19,35 @@ export function SignInForm({
 }: SignInFormProps) {
   return (
     <form action="/api/auth/login-form" method="post" className="stack auth-form">
-      <label className="stack" htmlFor={usernameId}>
-        <span className="small muted">MFL username</span>
-        <input
+      <div className="stack gap-1.5">
+        <Label htmlFor={usernameId} className="small muted">
+          MFL username
+        </Label>
+        <Input
           ref={usernameRef}
           id={usernameId}
-          className="field auth-field"
+          className="auth-field min-h-11"
           name="username"
           autoComplete="username"
           required
         />
-      </label>
-      <label className="stack" htmlFor={passwordId}>
-        <span className="small muted">Password</span>
-        <input
+      </div>
+      <div className="stack gap-1.5">
+        <Label htmlFor={passwordId} className="small muted">
+          Password
+        </Label>
+        <Input
           id={passwordId}
-          className="field auth-field"
+          className="auth-field min-h-11"
           name="password"
           type="password"
           autoComplete="current-password"
           required
         />
-      </label>
-      <button className="button primary auth-submit" type="submit">
+      </div>
+      <Button className="auth-submit min-h-11" type="submit">
         {submitLabel}
-      </button>
+      </Button>
     </form>
   );
 }

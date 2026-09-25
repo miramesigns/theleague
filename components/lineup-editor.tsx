@@ -5,8 +5,19 @@ import Link from 'next/link';
 
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { WeekPicker } from '@/components/week-picker';
+import { PlayerInfoChip } from '@/components/player-info-chip';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { formatLineupRowMeta, formatLineupSubmissionCue } from '@/lib/mfl-lineup';
 import type { LineupPageState, LineupRosterSnapshot } from '@/lib/mfl-lineup';
+import { toast } from 'sonner';
 
 type DraftState = Record<string, boolean>;
 
@@ -132,7 +143,9 @@ export function LineupEditor({ state }: { state: LineupPageState }) {
         week: state.selectedWeek,
         starters: payload.starters,
       });
-      setNotice(clear ? 'Lineup cleared.' : 'Lineup confirmed.');
+      const successMessage = clear ? 'Lineup cleared.' : 'Lineup confirmed.';
+      setNotice(successMessage);
+      toast.success(successMessage);
     } catch {
       setNotice('Lineup submission failed.');
     } finally {
@@ -211,7 +224,20 @@ export function LineupEditor({ state }: { state: LineupPageState }) {
                     aria-label={`${meta.ariaLabel} ${selected ? 'Starter' : 'Bench'}. ${row.statusText}.`}
                   >
                     <div className="lineup-option-main">
-                      <strong>{row.name}</strong>
+                      <PlayerInfoChip
+                        player={{
+                          name: row.name,
+                          position: row.position,
+                          team: row.team,
+                          status: row.statusText,
+                          byeWeek: row.byeWeek,
+                          injury: row.injury,
+                          projection: row.projection,
+                          score: row.actualPoints,
+                        }}
+                        triggerClassName="player-info-chip-lineup"
+                        onTriggerClick={(event) => event.stopPropagation()}
+                      />
                       <span className="player-meta">{meta.compactText}</span>
                     </div>
                     <div className="lineup-option-side">
@@ -286,59 +312,61 @@ export function LineupEditor({ state }: { state: LineupPageState }) {
 
       <div className="lineup-footer panel section">
         <div className="actions">
-          <button type="button" className="button primary" onClick={() => setReviewOpen(true)} disabled={busy || !draftSummary?.legal}>
+          <Button type="button" onClick={() => setReviewOpen(true)} disabled={busy || !draftSummary?.legal}>
             Review &amp; Submit
-          </button>
+          </Button>
           {hasSubmittedStarters ? (
-            <button type="button" className="button ghost" onClick={() => setClearOpen(true)} disabled={busy}>
+            <Button type="button" variant="outline" onClick={() => setClearOpen(true)} disabled={busy}>
               Clear submitted lineup
-            </button>
+            </Button>
           ) : null}
         </div>
       </div>
 
-      {reviewOpen ? (
-        <div className="modal-backdrop" role="presentation" onClick={() => setReviewOpen(false)}>
-          <div className="modal lineup-review" role="dialog" aria-modal="true" aria-labelledby="review-title" onClick={(event) => event.stopPropagation()}>
-            <h3 id="review-title">Review lineup</h3>
-            <div className="stack">
-              {groupedRows.map((group) => {
-                const selected = group.rows.filter((row) => draft[row.id]);
-                if (selected.length === 0) {
-                  return null;
-                }
+      <Dialog open={reviewOpen} onOpenChange={(next) => !busy && setReviewOpen(next)}>
+        <DialogContent className="lineup-review sm:max-w-md" showCloseButton={!busy}>
+          <DialogHeader>
+            <DialogTitle>Review lineup</DialogTitle>
+          </DialogHeader>
+          <div className="stack">
+            {groupedRows.map((group) => {
+              const selected = group.rows.filter((row) => draft[row.id]);
+              if (selected.length === 0) {
+                return null;
+              }
 
-                return (
-                  <div key={group.position}>
-                    <div className="section-label">{group.position}</div>
-                    <div className="review-list">
-                      {selected.map((row) => {
-                        const meta = formatLineupRowMeta(row);
+              return (
+                <div key={group.position}>
+                  <div className="section-label">{group.position}</div>
+                  <div className="review-list">
+                    {selected.map((row) => {
+                      const meta = formatLineupRowMeta(row);
 
-                        return (
-                          <div key={row.id} className="review-row">
-                            <div>
-                              <strong>{row.name}</strong>
-                              <div className="player-meta">{meta.compactText}</div>
-                            </div>
-                            <span className="tag live">Starter</span>
+                      return (
+                        <div key={row.id} className="review-row">
+                          <div>
+                            <strong>{row.name}</strong>
+                            <div className="player-meta">{meta.compactText}</div>
                           </div>
-                        );
-                      })}
-                    </div>
+                          <Badge>Starter</Badge>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
-            </div>
-            <div className="actions" style={{ marginTop: 14 }}>
-              <button type="button" className="button ghost" onClick={() => setReviewOpen(false)} disabled={busy}>Cancel</button>
-              <button type="button" className="button primary" onClick={() => submit(false)} disabled={busy || !draftSummary?.legal}>
-                {busy ? 'Submitting...' : 'Confirm submit'}
-              </button>
-            </div>
+                </div>
+              );
+            })}
           </div>
-        </div>
-      ) : null}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setReviewOpen(false)} disabled={busy}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={() => submit(false)} disabled={busy || !draftSummary?.legal}>
+              {busy ? 'Submitting...' : 'Confirm submit'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ConfirmDialog
         open={clearOpen}
