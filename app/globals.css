@@ -543,6 +543,21 @@ textarea {
   justify-items: end;
 }
 
+.player-score-line {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.player-score-status {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .matchup-summary {
   display: grid;
   gap: 6px;
@@ -1796,6 +1811,11 @@ textarea {
   justify-content: space-between;
   gap: 12px;
   font-size: 0.85rem;
+}
+
+.player-info-detail-row > span:last-child {
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .player-info-detail-row .muted {

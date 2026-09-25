@@ -22,6 +22,8 @@ export type MatchupPlayer = {
   projection: number | null;
   gameSecondsRemaining: number | null;
   liveStateText?: string;
+  /** Opponent + kickoff cue for yet-to-play players, e.g. `@ DAL · Sun 1:00`. */
+  scheduleCue?: string | null;
   /** MFL-style STATS column string when box-score stats are available. */
   statsText?: string | null;
 };

@@ -1,6 +1,7 @@
 import { AutoRefresh } from '@/components/auto-refresh';
 import { PlayerInfoChip } from '@/components/player-info-chip';
 import type { MatchupDetailState, MatchupTeam, MatchupPlayer } from '@/lib/mfl-scores';
+import { isYetToPlayGame } from '@/lib/mfl-live-state';
 import { groupPlayersByPosition } from '@/lib/player-detail';
 import { MatchupSummary } from '@/components/matchup-summary';
 
@@ -17,8 +18,10 @@ function groupPlayers(players: MatchupPlayer[]) {
 
 function PlayerRow({ player, source }: { player: MatchupPlayer; source: MatchupDetailState['source'] }) {
   const score = source === 'schedule' ? 'TBD' : formatScore(player.score);
+  const yetToPlay = source === 'live' && isYetToPlayGame(player.gameSecondsRemaining, player.liveStateText);
   const liveStateText = source === 'live' ? player.liveStateText || 'Yet to play' : player.status;
   const statsText = player.statsText?.trim() || null;
+  const bottomMeta = yetToPlay ? (player.scheduleCue?.trim() || null) : liveStateText;
 
   return (
     <div className="player-row">
@@ -37,8 +40,11 @@ function PlayerRow({ player, source }: { player: MatchupPlayer; source: MatchupD
         {statsText ? <div className="player-meta">{statsText}</div> : null}
       </div>
       <div className="player-side">
-        <div className="player-score">{score}</div>
-        <div className="player-meta">{liveStateText}</div>
+        <div className={`player-score-line${yetToPlay ? ' yet-to-play' : ''}`}>
+          <div className="player-score">{score}</div>
+          {yetToPlay ? <span className="player-score-status">Yet to play</span> : null}
+        </div>
+        {bottomMeta ? <div className="player-meta">{bottomMeta}</div> : null}
       </div>
     </div>
   );

@@ -730,6 +730,8 @@ test('loadMatchupDetailState maps live player ids to names and hides fake scores
     assert.equal(liveResult.matchup?.away.players[0].liveStateText, 'Playing · Q3 08:42 left');
     assert.equal(liveResult.matchup?.away.players[1].liveStateText, 'Yet to play');
     assert.equal(liveResult.matchup?.away.players[1].statsText ?? null, null);
+    assert.equal(liveResult.matchup?.away.players[1].scheduleCue, '@ DAL · Mon 8:15');
+    assert.equal(liveResult.matchup?.away.players[0].scheduleCue, 'vs WAS · Sun 4:25');
 
     const scheduledResult = await loadMatchupDetailState('session-123', '9', '0004');
     assert.equal(scheduledResult.source, 'schedule');
