@@ -1,5 +1,12 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
 :root {
   color-scheme: dark;
+  /* Championship brand tokens — used by existing app CSS */
   --bg: #08111f;
   --panel: #0f1a2d;
   --panel-2: #12203a;
@@ -11,6 +18,40 @@
   --danger: #fb7185;
   --success: #4ade80;
   --radius: 22px;
+
+  /* shadcn semantic surfaces (mapped to championship-dark) */
+  --background: #08111f;
+  --foreground: #e5eefb;
+  --card: #0f1a2d;
+  --card-foreground: #e5eefb;
+  --popover: #12203a;
+  --popover-foreground: #e5eefb;
+  --primary: #2563eb;
+  --primary-foreground: #e5eefb;
+  --secondary: #12203a;
+  --secondary-foreground: #e5eefb;
+  /* Surfaces that would otherwise collide with brand --muted/--accent */
+  --muted-bg: #12203a;
+  --muted-foreground: #93a7c6;
+  --accent-bg: #13233d;
+  --accent-foreground: #e5eefb;
+  --destructive: #fb7185;
+  --border: rgba(148, 163, 184, 0.16);
+  --input: rgba(148, 163, 184, 0.22);
+  --ring: #22d3ee;
+  --chart-1: #22d3ee;
+  --chart-2: #2563eb;
+  --chart-3: #4ade80;
+  --chart-4: #93a7c6;
+  --chart-5: #fb7185;
+  --sidebar: #0f1a2d;
+  --sidebar-foreground: #e5eefb;
+  --sidebar-primary: #2563eb;
+  --sidebar-primary-foreground: #e5eefb;
+  --sidebar-accent: #12203a;
+  --sidebar-accent-foreground: #e5eefb;
+  --sidebar-border: rgba(148, 163, 184, 0.16);
+  --sidebar-ring: #22d3ee;
 }
 
 * {
@@ -168,7 +209,7 @@ textarea {
   gap: 0;
 }
 
-.scoreboard-banner .week-picker > .small {
+.scoreboard-banner .week-picker-label-row {
   display: none;
 }
 
@@ -288,6 +329,17 @@ textarea {
 .week-picker {
   display: grid;
   gap: 6px;
+}
+
+.week-picker-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.week-picker-help {
+  color: var(--muted);
 }
 
 .week-select {
@@ -1570,15 +1622,28 @@ textarea {
   align-items: center;
   gap: 8px;
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 999px;
   padding: 8px 12px;
+  background: rgba(15, 26, 45, 0.9);
   font-size: 0.85rem;
 }
 
-.push-category input {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--accent-2);
+.notification-prefs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.pref-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: rgba(15, 26, 45, 0.9);
+  font-size: 0.85rem;
 }
 
 .trade-list {
@@ -1836,7 +1901,6 @@ textarea {
   font-size: 0.72rem;
 }
 
-
 .trade-selected-assets {
   display: flex;
   flex-wrap: wrap;
@@ -1931,4 +1995,92 @@ textarea {
 .pull-label {
   font-size: 0.78rem;
   color: var(--muted);
+}
+
+@theme inline {
+  --font-heading: var(--font-sans);
+  --font-sans: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  /* Map Tailwind accent/muted utilities to surface tokens, not brand --accent/--muted */
+  --color-accent: var(--accent-bg);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted-bg);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* App is always championship-dark; .dark keeps shadcn dark: variants working
+   without overwriting brand --muted/--accent text/cyan tokens. */
+.dark {
+  --background: #08111f;
+  --foreground: #e5eefb;
+  --card: #0f1a2d;
+  --card-foreground: #e5eefb;
+  --popover: #12203a;
+  --popover-foreground: #e5eefb;
+  --primary: #2563eb;
+  --primary-foreground: #e5eefb;
+  --secondary: #12203a;
+  --secondary-foreground: #e5eefb;
+  --muted-bg: #12203a;
+  --muted-foreground: #93a7c6;
+  --accent-bg: #13233d;
+  --accent-foreground: #e5eefb;
+  --destructive: #fb7185;
+  --border: rgba(148, 163, 184, 0.16);
+  --input: rgba(148, 163, 184, 0.22);
+  --ring: #22d3ee;
+  --sidebar: #0f1a2d;
+  --sidebar-foreground: #e5eefb;
+  --sidebar-primary: #2563eb;
+  --sidebar-primary-foreground: #e5eefb;
+  --sidebar-accent: #12203a;
+  --sidebar-accent-foreground: #e5eefb;
+  --sidebar-border: rgba(148, 163, 184, 0.16);
+  --sidebar-ring: #22d3ee;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  /* Keep championship gradient from the unlayered body rule; only sync text. */
+  body {
+    @apply text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
 }

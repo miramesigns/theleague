@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
+import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+
 const CATEGORIES = [
   { key: 'scores' as const, label: 'Scores' },
   { key: 'lineup' as const, label: 'Lineup' },
@@ -130,13 +133,13 @@ export function PushSubscribe() {
           </div>
         </div>
         {subscribed ? (
-          <button type="button" className="button ghost" onClick={unsubscribe} disabled={busy}>
+          <Button type="button" variant="outline" onClick={unsubscribe} disabled={busy}>
             {busy ? 'Working…' : 'Disable push'}
-          </button>
+          </Button>
         ) : (
-          <button type="button" className="button primary" onClick={subscribe} disabled={busy || permission === 'denied'}>
+          <Button type="button" onClick={subscribe} disabled={busy || permission === 'denied'}>
             {busy ? 'Working…' : 'Enable push'}
-          </button>
+          </Button>
         )}
       </div>
 
@@ -150,11 +153,13 @@ export function PushSubscribe() {
           <div className="push-categories">
             {CATEGORIES.map((c) => (
               <label key={c.key} className="push-category">
-                <input
-                  type="checkbox"
+                <Switch
                   checked={categories[c.key]}
-                  onChange={(e) => setCategories((prev) => ({ ...prev, [c.key]: e.target.checked }))}
+                  onCheckedChange={(checked) =>
+                    setCategories((prev) => ({ ...prev, [c.key]: checked }))
+                  }
                   disabled={busy}
+                  aria-label={c.label}
                 />
                 <span>{c.label}</span>
               </label>
@@ -177,9 +182,13 @@ export function PushSubscribe() {
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
-  const rawData = atob(base64);
-  return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -188,5 +197,5 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   for (let i = 0; i < bytes.byteLength; i++) {
     binary += String.fromCharCode(bytes[i]);
   }
-  return btoa(binary);
+  return window.btoa(binary);
 }

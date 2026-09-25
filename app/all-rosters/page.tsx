@@ -3,6 +3,7 @@ import { formatRosterSalary, groupRosterRows } from '@/lib/mfl-roster';
 import { getMflSessionCookieValue } from '@/lib/mfl-session';
 import { loadAllRostersPageState } from '@/lib/mfl-all-rosters';
 import { AutoRefresh } from '@/components/auto-refresh';
+import { FranchisePicker } from '@/components/franchise-picker';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -35,13 +36,10 @@ export default async function AllRostersPage({
       {!state.ok ? <section className="panel section"><p className="muted">{state.message}</p></section> : (
         <>
           <section className="panel section all-rosters-controls">
-            <form action="/all-rosters" method="get" className="team-picker">
-              <label htmlFor="franchise">Franchise</label>
-              <select id="franchise" name="franchise" defaultValue={state.selectedFranchiseId ?? ''}>
-                {state.franchises.map((franchise) => <option key={franchise.id} value={franchise.id}>{franchise.name}</option>)}
-              </select>
-              <button className="button" type="submit">View roster</button>
-            </form>
+            <FranchisePicker
+              franchises={state.franchises}
+              selectedFranchiseId={state.selectedFranchiseId}
+            />
             <AutoRefresh />
           </section>
 

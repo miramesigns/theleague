@@ -1,3 +1,5 @@
+import { Skeleton } from '@/components/ui/skeleton';
+
 type RouteLoadingProps = {
   title: string;
   message: string;
@@ -21,8 +23,8 @@ export function RouteLoading({ title, message, rows = 5 }: RouteLoadingProps) {
       <section className="panel section stack" aria-hidden="true">
         {Array.from({ length: rows }, (_, index) => (
           <div className="route-loading-row" key={index}>
-            <div className="skeleton line" />
-            <div className="skeleton line tiny" />
+            <Skeleton className="h-3.5 w-[min(280px,70vw)] rounded-full" />
+            <Skeleton className="h-3.5 w-[68px] rounded-full" />
           </div>
         ))}
       </section>

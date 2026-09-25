@@ -1,19 +1,20 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
-import { createPortal } from 'react-dom';
+import { useEffect, useId, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { toast } from 'sonner';
 
 import { describeLoginAuthState } from '@/lib/mfl-auth';
 import { SignInForm } from '@/components/sign-in-form';
-
-function useIsClient() {
-  return useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false,
-  );
-}
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 export function AuthControls({ authenticated }: { authenticated: boolean }) {
   const router = useRouter();
@@ -25,12 +26,15 @@ export function AuthControls({ authenticated }: { authenticated: boolean }) {
   const onLandingGate = pathname === '/';
   const usernameId = useId();
   const passwordId = useId();
-  const dialogTitleId = useId();
   const usernameRef = useRef<HTMLInputElement | null>(null);
   const handledAuthRef = useRef<string | null>(null);
   const [open, setOpen] = useState(() => Boolean(authState?.openModal) && !onLandingGate);
-  const [banner, setBanner] = useState(() => (onLandingGate ? null : authState?.banner ?? null));
-  const isClient = useIsClient();
+  const [banner, setBanner] = useState(() => {
+    if (onLandingGate) return null;
+    // Success feedback is a toast — never seed a success banner in the header.
+    if (authState?.banner?.kind === 'success') return null;
+    return authState?.banner ?? null;
+  });
 
   useEffect(() => {
     // LandingSignIn owns `auth` query UX on the public gate.
@@ -43,22 +47,25 @@ export function AuthControls({ authenticated }: { authenticated: boolean }) {
     }
 
     handledAuthRef.current = auth;
-    setOpen(Boolean(authState?.openModal));
-    setBanner(authState?.banner ?? null);
+
+    if (authState?.banner?.kind === 'success') {
+      toast.success(authState.banner.title, { description: authState.banner.detail });
+    }
+
+    const nextOpen = Boolean(authState?.openModal);
+    const nextBanner = authState?.banner?.kind === 'error' ? authState.banner : null;
+    // Defer React state updates so this effect only syncs the URL + toast immediately.
+    const timer = window.setTimeout(() => {
+      setOpen(nextOpen);
+      setBanner(nextBanner);
+    }, 0);
 
     const next = new URLSearchParams(searchParams.toString());
     next.delete('auth');
     router.replace(next.toString() ? `${pathname}?${next.toString()}` : pathname, { scroll: false });
+
+    return () => window.clearTimeout(timer);
   }, [auth, authState, onLandingGate, pathname, router, searchParams]);
-
-  useEffect(() => {
-    if (!banner || banner.kind !== 'success') {
-      return undefined;
-    }
-
-    const timeout = window.setTimeout(() => setBanner(null), 3500);
-    return () => window.clearTimeout(timeout);
-  }, [banner]);
 
   useEffect(() => {
     if (!open) {
@@ -68,70 +75,12 @@ export function AuthControls({ authenticated }: { authenticated: boolean }) {
     usernameRef.current?.focus();
   }, [open]);
 
-  useEffect(() => {
-    if (!open) {
-      return undefined;
-    }
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        setOpen(false);
-        if (banner?.kind === 'error') {
-          setBanner(null);
-        }
-      }
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [banner?.kind, open]);
-
   const closeDialog = () => {
     setOpen(false);
     if (banner?.kind === 'error') {
       setBanner(null);
     }
   };
-
-  const modal = open ? (
-    <div className="modal-backdrop" role="presentation" onClick={closeDialog}>
-      <div
-        className="modal auth-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={dialogTitleId}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="row auth-modal-head">
-          <div>
-            <h3 id={dialogTitleId}>Sign in to MFL</h3>
-            <p className="muted small">Credentials post to the server and stay out of the browser.</p>
-          </div>
-          <button type="button" className="button ghost auth-cancel" onClick={closeDialog}>
-            Cancel
-          </button>
-        </div>
-
-        {banner?.kind === 'error' ? (
-          <div className="banner login-state error" role="alert">
-            <div>
-              <div className="small" style={{ fontWeight: 700 }}>
-                {banner.title}
-              </div>
-              <div className="small muted">{banner.detail}</div>
-            </div>
-          </div>
-        ) : null}
-
-        <SignInForm
-          usernameId={usernameId}
-          passwordId={passwordId}
-          usernameRef={usernameRef}
-        />
-      </div>
-    </div>
-  ) : null;
 
   // Landing gate already has the credential form — no floating header Sign in.
   if (onLandingGate && !authenticated) {
@@ -140,36 +89,57 @@ export function AuthControls({ authenticated }: { authenticated: boolean }) {
 
   return (
     <div className="auth-controls">
-      {banner?.kind === 'success' ? (
-        <div className={`banner login-state ${banner.kind}`} role="status">
-          <div>
-            <div className="small" style={{ fontWeight: 700 }}>
-              {banner.title}
-            </div>
-            <div className="small muted">{banner.detail}</div>
-          </div>
-        </div>
-      ) : null}
-
       {authenticated ? (
         <form action="/api/auth/logout" method="post">
-          <button type="submit" className="button auth-button">
+          <Button type="submit" variant="outline" className="auth-button min-h-11 min-w-24">
             Sign out
-          </button>
+          </Button>
         </form>
       ) : (
-        <button
+        <Button
           type="button"
-          className="button auth-button"
+          variant="outline"
+          className="auth-button min-h-11 min-w-24"
           onClick={() => setOpen(true)}
           aria-haspopup="dialog"
           aria-expanded={open}
         >
           Sign in
-        </button>
+        </Button>
       )}
 
-      {isClient && modal ? createPortal(modal, document.body) : null}
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          if (!next) {
+            closeDialog();
+          } else {
+            setOpen(true);
+          }
+        }}
+      >
+        <DialogContent className="auth-modal sm:max-w-md" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>Sign in to MFL</DialogTitle>
+            <DialogDescription>
+              Credentials post to the server and stay out of the browser.
+            </DialogDescription>
+          </DialogHeader>
+
+          {banner?.kind === 'error' ? (
+            <Alert variant="destructive">
+              <AlertTitle>{banner.title}</AlertTitle>
+              <AlertDescription>{banner.detail}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          <SignInForm
+            usernameId={usernameId}
+            passwordId={passwordId}
+            usernameRef={usernameRef}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

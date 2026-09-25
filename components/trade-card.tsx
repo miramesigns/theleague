@@ -1,5 +1,7 @@
 "use client";
 
+import { EllipsisIcon } from 'lucide-react';
+
 import { formatMflAssetLabels } from '@/lib/mfl-assets';
 import { tradeCardSides, type TradeRow } from '@/lib/mfl-trades';
 import {
@@ -9,6 +11,13 @@ import {
   KTC_TRADE_CALCULATOR_URL,
   type TradeValueRead,
 } from '@/lib/trade-value-help';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 
 function TradeValueHelp({
   valueRead,
@@ -119,6 +128,11 @@ export function TradeCard({
   const hasOutgoingActions = Boolean(onRevoke || onAmend);
   const showActions = isPending && (hasIncomingActions || hasOutgoingActions);
   const sides = tradeCardSides(trade, primaryFranchiseId);
+  const overflowActions = [
+    onCounter ? { label: 'Counter', onClick: onCounter } : null,
+    onAmend ? { label: 'Amend & resend', onClick: onAmend } : null,
+    onRevoke ? { label: 'Cancel offer', onClick: onRevoke } : null,
+  ].filter((action): action is { label: string; onClick: () => void } => Boolean(action));
 
   return (
     <article className={`trade-card${isPending ? ' trade-card-pending' : ''}`}>
@@ -130,8 +144,8 @@ export function TradeCard({
         <span>{trade.timeLabel}</span>
         {trade.expiresLabel ? <span>· expires {trade.expiresLabel}</span> : null}
         {trade.byCommish ? <span className="trade-commish">commissioner assisted</span> : null}
-        {isPending ? <span className="trade-status-pending">Pending</span> : null}
-        {hasOutgoingActions ? <span className="trade-status-pending">Your offer</span> : null}
+        {isPending ? <Badge variant="secondary">Pending</Badge> : null}
+        {hasOutgoingActions ? <Badge variant="outline">Your offer</Badge> : null}
       </div>
       {trade.valueRead ? (
         <TradeValueHelp valueRead={trade.valueRead} playerNames={playerLabelsForManual(trade)} />
@@ -139,29 +153,42 @@ export function TradeCard({
       {showActions ? (
         <div className="trade-actions">
           {onAccept ? (
-            <button type="button" className="button primary trade-action-btn" onClick={onAccept}>
+            <Button type="button" className="trade-action-btn" onClick={onAccept}>
               Accept
-            </button>
+            </Button>
           ) : null}
           {onDecline ? (
-            <button type="button" className="button ghost trade-action-btn" onClick={onDecline}>
+            <Button type="button" variant="outline" className="trade-action-btn" onClick={onDecline}>
               Decline
-            </button>
+            </Button>
           ) : null}
-          {onCounter ? (
-            <button type="button" className="button ghost trade-action-btn" onClick={onCounter}>
-              Counter
-            </button>
-          ) : null}
-          {onAmend ? (
-            <button type="button" className="button primary trade-action-btn" onClick={onAmend}>
-              Amend &amp; resend
-            </button>
-          ) : null}
-          {onRevoke ? (
-            <button type="button" className="button ghost trade-action-btn" onClick={onRevoke}>
-              Cancel offer
-            </button>
+          {overflowActions.length > 0 ? (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="trade-action-more"
+                  aria-label="More trade actions"
+                >
+                  <EllipsisIcon />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-44 p-1.5">
+                {overflowActions.map((action) => (
+                  <Button
+                    key={action.label}
+                    type="button"
+                    variant="ghost"
+                    className="w-full justify-start"
+                    onClick={action.onClick}
+                  >
+                    {action.label}
+                  </Button>
+                ))}
+              </PopoverContent>
+            </Popover>
           ) : null}
         </div>
       ) : null}
