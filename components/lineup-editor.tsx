@@ -5,6 +5,7 @@ import Link from 'next/link';
 
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { WeekPicker } from '@/components/week-picker';
+import { PlayerInfoChip } from '@/components/player-info-chip';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -223,7 +224,20 @@ export function LineupEditor({ state }: { state: LineupPageState }) {
                     aria-label={`${meta.ariaLabel} ${selected ? 'Starter' : 'Bench'}. ${row.statusText}.`}
                   >
                     <div className="lineup-option-main">
-                      <strong>{row.name}</strong>
+                      <PlayerInfoChip
+                        player={{
+                          name: row.name,
+                          position: row.position,
+                          team: row.team,
+                          status: row.statusText,
+                          byeWeek: row.byeWeek,
+                          injury: row.injury,
+                          projection: row.projection,
+                          score: row.actualPoints,
+                        }}
+                        triggerClassName="player-info-chip-lineup"
+                        onTriggerClick={(event) => event.stopPropagation()}
+                      />
                       <span className="player-meta">{meta.compactText}</span>
                     </div>
                     <div className="lineup-option-side">

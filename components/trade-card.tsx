@@ -2,7 +2,7 @@
 
 import { EllipsisIcon } from 'lucide-react';
 
-import { formatMflAssetLabels } from '@/lib/mfl-assets';
+import type { MflAsset } from '@/lib/mfl-assets';
 import { tradeCardSides, type TradeRow } from '@/lib/mfl-trades';
 import {
   FANTASYCALC_TRADE_CALCULATOR_URL,
@@ -11,6 +11,7 @@ import {
   KTC_TRADE_CALCULATOR_URL,
   type TradeValueRead,
 } from '@/lib/trade-value-help';
+import { PlayerInfoChip } from '@/components/player-info-chip';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -76,6 +77,30 @@ function playerLabelsForManual(trade: TradeRow): string[] {
     .map((asset) => asset.label);
 }
 
+function TradeAssetList({ assets }: { assets: MflAsset[] }) {
+  if (assets.length === 0) {
+    return <div className="trade-assets muted">—</div>;
+  }
+
+  return (
+    <div className="trade-assets trade-asset-chip-list">
+      {assets.map((asset) =>
+        asset.kind === 'player' ? (
+          <PlayerInfoChip
+            key={asset.id}
+            player={{ name: asset.label }}
+            triggerClassName="player-info-chip-inline"
+          />
+        ) : (
+          <span key={asset.id} className="trade-asset-static">
+            {asset.label}
+          </span>
+        ),
+      )}
+    </div>
+  );
+}
+
 function TradeParties({
   sides,
 }: {
@@ -88,7 +113,7 @@ function TradeParties({
           <div className="trade-franchise">{sides.left.franchiseName}</div>
         ) : null}
         <div className="trade-direction">{sides.left.label}</div>
-        <div className="trade-assets">{formatMflAssetLabels(sides.left.assets)}</div>
+        <TradeAssetList assets={sides.left.assets} />
       </div>
       <div className="trade-arrow" aria-hidden="true">→</div>
       <div className="trade-side trade-side-gives">
@@ -96,7 +121,7 @@ function TradeParties({
           <div className="trade-franchise">{sides.right.franchiseName}</div>
         ) : null}
         <div className="trade-direction">{sides.right.label}</div>
-        <div className="trade-assets">{formatMflAssetLabels(sides.right.assets)}</div>
+        <TradeAssetList assets={sides.right.assets} />
       </div>
     </div>
   );

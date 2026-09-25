@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { CompletedTradeCard, TradeCard } from '@/components/trade-card';
+import { PlayerInfoChip } from '@/components/player-info-chip';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -195,7 +196,14 @@ function PlayerAssetPicker({
                 const fcValue = valueCatalog?.byMflId[asset.id]?.value;
                 return (
                   <span key={asset.id} className="trade-asset-pill">
-                    {asset.label}
+                    {asset.kind === 'player' ? (
+                      <PlayerInfoChip
+                        player={{ name: asset.label }}
+                        triggerClassName="player-info-chip-inline"
+                      />
+                    ) : (
+                      asset.label
+                    )}
                     {typeof fcValue === 'number' ? ` · ${formatValueNumber(fcValue)}` : ''}
                     <button
                       type="button"

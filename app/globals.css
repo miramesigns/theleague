@@ -1716,6 +1716,90 @@ textarea {
   line-height: 1.35;
 }
 
+.trade-asset-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.trade-asset-static {
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+}
+
+.player-info-chip {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: rgba(15, 26, 45, 0.92);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 6px 10px;
+  min-height: 32px;
+  font: inherit;
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+  text-align: left;
+}
+
+.player-info-chip:hover,
+.player-info-chip:focus-visible {
+  border-color: rgba(34, 211, 238, 0.45);
+  outline: none;
+}
+
+.player-info-chip-inline {
+  padding: 2px 8px;
+  min-height: 26px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text);
+  background: rgba(8, 17, 31, 0.72);
+}
+
+.player-info-chip-roster,
+.player-info-chip-matchup,
+.player-info-chip-lineup {
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  padding: 2px 4px;
+  min-height: 0;
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: rgba(148, 163, 184, 0.35);
+  text-underline-offset: 3px;
+}
+
+.player-info-chip-roster:hover,
+.player-info-chip-matchup:hover,
+.player-info-chip-lineup:hover,
+.player-info-chip-roster:focus-visible,
+.player-info-chip-matchup:focus-visible,
+.player-info-chip-lineup:focus-visible {
+  border-color: transparent;
+  background: rgba(34, 211, 238, 0.08);
+  text-decoration-color: var(--accent);
+}
+
+.player-info-details {
+  display: grid;
+  gap: 6px;
+}
+
+.player-info-detail-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.85rem;
+}
+
+.player-info-detail-row .muted {
+  flex: 0 0 auto;
+}
+
 .trade-arrow {
   color: var(--accent);
   font-size: 1.2rem;
