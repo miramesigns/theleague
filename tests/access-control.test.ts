@@ -16,6 +16,7 @@ test('access policy exposes only landing and authentication routes to visitors',
   assert.equal(isPublicCompanionPath('/app-icon-192.png'), true);
   assert.equal(isPublicCompanionPath('/icon.png'), true);
   assert.equal(isPublicCompanionPath('/apple-icon.png'), true);
+  assert.equal(isPublicCompanionPath('/apple-touch-icon.png'), true);
   assert.equal(isPublicCompanionPath('/sw.js'), true);
   assert.equal(isPublicCompanionPath('/mfl-banner-1200x450.jpg'), true);
   assert.equal(isPublicCompanionPath('/the-league-2026-banner.jpg'), true);
