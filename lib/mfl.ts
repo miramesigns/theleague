@@ -48,6 +48,13 @@ export function buildMflLiveProjectionUrl(week: number): URL {
   return new URL(`https://${config.host}/fflnetdynamic${config.year}/live_proj_${paddedWeek}.txt`);
 }
 
+/** Box-score live stats file used by MFL's STATS column (hosted on api.myfantasyleague.com). */
+export function buildMflLiveStatsUrl(week: number): URL {
+  const config = getMflConfig();
+  const paddedWeek = String(week).padStart(2, '0');
+  return new URL(`https://api.myfantasyleague.com/fflnetdynamic${config.year}/live_stats_${paddedWeek}.txt`);
+}
+
 export type FetchMflExportOptions = {
   sessionCookieValue?: string | null;
   cache?: RequestCache;
@@ -128,6 +135,23 @@ export async function fetchMflLiveProjections(week: number, options: FetchMflExp
   }
 
   return fetch(buildMflLiveProjectionUrl(week), {
+    headers,
+    cache: options.cache ?? 'no-store',
+  });
+}
+
+export async function fetchMflLiveStats(week: number, options: FetchMflExportOptions = {}) {
+  const config = getMflConfig();
+  const headers = new Headers({
+    'User-Agent': config.userAgent,
+    Accept: 'text/plain, */*;q=0.5',
+  });
+
+  if (options.sessionCookieValue?.trim()) {
+    headers.set('Cookie', `${MFL_SESSION_COOKIE_NAME}=${options.sessionCookieValue.trim()}`);
+  }
+
+  return fetch(buildMflLiveStatsUrl(week), {
     headers,
     cache: options.cache ?? 'no-store',
   });

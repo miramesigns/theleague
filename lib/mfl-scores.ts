@@ -1,5 +1,11 @@
-import { fetchMflExport, fetchMflLiveProjections, fetchMflSiteExport, getMflConfig } from './mfl.ts';
+import { fetchMflExport, fetchMflLiveProjections, fetchMflLiveStats, fetchMflSiteExport, getMflConfig } from './mfl.ts';
 import { addPlayerLiveState, loadNflScheduleGames } from './mfl-live-state.ts';
+import {
+  coerceUpdatedStatsText,
+  parseMflLiveStats,
+  resolvePlayerLiveStatsText,
+  type MflLiveStatBag,
+} from './mfl-live-stats.ts';
 
 const LIVE_SCORES_ERROR_MESSAGE = 'Live data could not be loaded. Please sign in on the More tab and try again.';
 const MATCHUP_ERROR_MESSAGE = 'Matchup details could not be loaded. Please refresh and try again.';
@@ -16,6 +22,10 @@ export type MatchupPlayer = {
   projection: number | null;
   gameSecondsRemaining: number | null;
   liveStateText?: string;
+  /** Opponent + kickoff cue for yet-to-play players, e.g. `@ DAL · Sun 1:00`. */
+  scheduleCue?: string | null;
+  /** MFL-style STATS column string when box-score stats are available. */
+  statsText?: string | null;
 };
 
 export type MatchupTeamSummary = {
@@ -509,6 +519,15 @@ async function loadMflStatProjections(week: number, sessionCookieValue: string |
   }
 }
 
+async function loadMflLiveStatsById(week: number, sessionCookieValue: string | null): Promise<Map<string, MflLiveStatBag>> {
+  try {
+    const response = await fetchMflLiveStats(week, { sessionCookieValue, cache: 'no-store' });
+    return response.ok ? parseMflLiveStats(await response.text()) : new Map();
+  } catch {
+    return new Map();
+  }
+}
+
 type SeededRandom = {
   next: () => number;
   normal: (mean: number, standardDeviation: number) => number;
@@ -769,12 +788,13 @@ function parseMatchupPlayers(
   playersById: Map<string, NamedPlayer>,
   projectionsById: Map<string, number>,
   source: ScoresSource,
+  liveStatsById: Map<string, MflLiveStatBag> = new Map(),
 ): MatchupPlayer[] {
   const playersRoot = toRecord(franchise.players);
   const playerEntries = toJsonArray(playersRoot?.player);
 
   return playerEntries
-    .map((entry) => {
+    .map((entry): MatchupPlayer | null => {
       const id = extractText(entry.id);
       if (!id) {
         return null;
@@ -783,19 +803,24 @@ function parseMatchupPlayers(
       const playerInfo = playersById.get(id);
       const name = playerInfo?.name || `Player ${id}`;
       const position = playerInfo?.position || 'UNK';
+      const nflTeam = playerInfo?.team ?? null;
       const score = source === 'schedule' ? null : safeNumber(entry.score);
       const gameSecondsRemaining = source === 'schedule' ? null : safeNumber(entry.gameSecondsRemaining);
+      const fromUpdated = coerceUpdatedStatsText(entry.updatedStats);
+      const fromLiveFile = resolvePlayerLiveStatsText(liveStatsById, { id, position, nflTeam });
+      const statsText = source === 'schedule' ? null : fromUpdated ?? fromLiveFile;
 
       return {
         id,
         name,
         position,
-        nflTeam: playerInfo?.team ?? null,
+        nflTeam,
         status: parsePlayerGroup(entry.status),
         score,
         projection: projectionsById.get(id) ?? null,
         gameSecondsRemaining,
-      } satisfies MatchupPlayer;
+        statsText,
+      };
     })
     .filter((player): player is MatchupPlayer => player !== null);
 }
@@ -806,6 +831,7 @@ function parseMatchupTeam(
   playersById: Map<string, NamedPlayer>,
   projectionsById: Map<string, number>,
   source: ScoresSource,
+  liveStatsById: Map<string, MflLiveStatBag> = new Map(),
 ): MatchupTeam | null {
   const teamId = extractText(franchise.id);
   if (!teamId) {
@@ -818,7 +844,7 @@ function parseMatchupTeam(
   const isHome = safeBoolean(franchise.isHome) ?? false;
   const score = source === 'schedule' ? null : safeNumber(franchise.score);
   const result = source === 'schedule' ? null : extractText(franchise.result) || null;
-  const players = parseMatchupPlayers(franchise, playersById, projectionsById, source);
+  const players = parseMatchupPlayers(franchise, playersById, projectionsById, source, liveStatsById);
   const summary = deriveStarterPhaseSummary(franchise, players, source);
 
   if ((source === 'live' || source === 'results') && score === null) {
@@ -853,6 +879,7 @@ function parseMatchupCards(
   source: ScoresSource,
   simulationWeek: number,
   statProjections: MflStatProjections = emptyStatProjections(),
+  liveStatsById: Map<string, MflLiveStatBag> = new Map(),
 ): MatchupCard[] | null {
   if (!weekRecord) {
     return null;
@@ -876,8 +903,8 @@ function parseMatchupCards(
     const orderedFranchises = homeIndex === 1 ? [franchises[1], franchises[0]] : franchises;
 
     const [homeFranchise, awayFranchise] = orderedFranchises;
-    const home = parseMatchupTeam(homeFranchise, namesById, playersById, projectionsById, source);
-    const away = parseMatchupTeam(awayFranchise, namesById, playersById, projectionsById, source);
+    const home = parseMatchupTeam(homeFranchise, namesById, playersById, projectionsById, source, liveStatsById);
+    const away = parseMatchupTeam(awayFranchise, namesById, playersById, projectionsById, source, liveStatsById);
 
     if (!home || !away) {
       return null;
@@ -1058,8 +1085,18 @@ function parseSelectedMatchup(
   source: ScoresSource,
   simulationWeek: number,
   statProjections: MflStatProjections = emptyStatProjections(),
+  liveStatsById: Map<string, MflLiveStatBag> = new Map(),
 ): MatchupCard | null {
-  const matchups = parseMatchupCards(weekRecord, namesById, playersById, projectionsById, source, simulationWeek, statProjections);
+  const matchups = parseMatchupCards(
+    weekRecord,
+    namesById,
+    playersById,
+    projectionsById,
+    source,
+    simulationWeek,
+    statProjections,
+    liveStatsById,
+  );
   if (!matchups) {
     return null;
   }
@@ -1232,13 +1269,14 @@ export async function loadMatchupDetailState(
   }
 
   try {
-    const [currentLiveResponse, selectedLiveResponse, leagueResponse, playersResponse, projectedScoresResponse, statProjections, primaryResolution] = await Promise.all([
+    const [currentLiveResponse, selectedLiveResponse, leagueResponse, playersResponse, projectedScoresResponse, statProjections, liveStatsById, primaryResolution] = await Promise.all([
       fetchMflExport('liveScoring', { JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
-      fetchMflExport('liveScoring', { W: String(selectedWeek), JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
+      fetchMflExport('liveScoring', { W: String(selectedWeek), DETAILS: '1', JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
       fetchMflExport('league', { JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
       fetchMflExport('players', { JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
       fetchMflExport('projectedScores', { W: String(selectedWeek), JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
       loadMflStatProjections(selectedWeek, sessionCookieValue),
+      loadMflLiveStatsById(selectedWeek, sessionCookieValue),
       resolvePrimaryFranchiseId(sessionCookieValue),
     ]);
 
@@ -1266,7 +1304,17 @@ export async function loadMatchupDetailState(
     }
 
     const source = sourceFromWeekComparison(selectedWeek, currentWeek);
-    const matchup = parseSelectedMatchup(selectedLiveRecord, franchiseId, namesById, playersById, projectionsById, source, selectedWeek, statProjections);
+    const matchup = parseSelectedMatchup(
+      selectedLiveRecord,
+      franchiseId,
+      namesById,
+      playersById,
+      projectionsById,
+      source,
+      selectedWeek,
+      statProjections,
+      liveStatsById,
+    );
 
     if (!matchup) {
       return buildDetailErrorState(`No matchup was found for week ${selectedWeek}.`);
