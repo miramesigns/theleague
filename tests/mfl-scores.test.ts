@@ -694,6 +694,17 @@ test('loadMatchupDetailState maps live player ids to names and hides fake scores
       return createJsonResponse(makeNflSchedulePayload());
     }
 
+    if (String(input).includes('live_stats_')) {
+      return new Response('p1002|RA 12|RY 55|#R 1|RS 3\np1001|PC 18|PA 25|PY 210|#P 2|PS 5,12|IN 0\n', {
+        status: 200,
+        headers: { 'content-type': 'text/plain' },
+      });
+    }
+
+    if (String(input).includes('live_proj_')) {
+      return new Response('', { status: 200, headers: { 'content-type': 'text/plain' } });
+    }
+
     return new Response('not found', { status: 404 });
   }) as typeof fetch;
 
@@ -705,6 +716,8 @@ test('loadMatchupDetailState maps live player ids to names and hides fake scores
     assert.equal(liveResult.matchup?.primaryTeamId, '0004');
     assert.equal(liveResult.matchup?.away.players[0].name, 'Running Back One');
     assert.equal(liveResult.matchup?.away.players[0].score, 18.6);
+    assert.equal(liveResult.matchup?.away.players[0].statsText, 'Rush: 12/55, 1 RuTD (3)');
+    assert.equal(liveResult.matchup?.home.players[0].statsText, 'Pass: 18/25, 210 Yd, 2 PaTD (5,12)');
     assert.equal(liveResult.matchup?.home.summary.played, 1);
     assert.equal(liveResult.matchup?.home.summary.playing, 1);
     assert.equal(liveResult.matchup?.home.summary.yetToPlay, 1);
@@ -716,11 +729,13 @@ test('loadMatchupDetailState maps live player ids to names and hides fake scores
     assert.equal(liveResult.matchup?.home.players[0].liveStateText, 'Playing · Q3 08:42 left');
     assert.equal(liveResult.matchup?.away.players[0].liveStateText, 'Playing · Q3 08:42 left');
     assert.equal(liveResult.matchup?.away.players[1].liveStateText, 'Yet to play');
+    assert.equal(liveResult.matchup?.away.players[1].statsText ?? null, null);
 
     const scheduledResult = await loadMatchupDetailState('session-123', '9', '0004');
     assert.equal(scheduledResult.source, 'schedule');
     assert.equal(scheduledResult.matchup?.away.summary.winChance, null);
     assert.equal(scheduledResult.matchup?.away.players.every((player) => player.score === null), true);
+    assert.equal(scheduledResult.matchup?.away.players.every((player) => !player.statsText), true);
   } finally {
     globalThis.fetch = originalFetch;
     restoreEnv();

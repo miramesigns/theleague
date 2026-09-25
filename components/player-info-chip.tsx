@@ -18,6 +18,8 @@ export type PlayerInfo = {
   position?: string | null;
   team?: string | null;
   status?: string | null;
+  /** MFL-style live STATS string when available (e.g. `Rec: 5/100, 1 ReTD (15)`). */
+  stats?: string | null;
   byeWeek?: number | string | null;
   salary?: string | null;
   ytdPoints?: number | string | null;
@@ -31,6 +33,11 @@ function hasText(value: string | number | null | undefined): value is string | n
   if (value === null || value === undefined) return false;
   if (typeof value === 'string') return value.trim().length > 0;
   return true;
+}
+
+function isRedundantRosterStatus(value: string | number): boolean {
+  const normalized = String(value).trim().toLowerCase();
+  return normalized === 'starter' || normalized === 'bench' || normalized === 'reserve' || normalized === 'nonstarter';
 }
 
 function DetailRow({ label, value }: { label: string; value: string | number }) {
@@ -57,10 +64,14 @@ export function PlayerInfoChip({
   /** Called after the trigger click (e.g. stopPropagation for nested buttons). */
   onTriggerClick?: (event: MouseEvent<HTMLButtonElement>) => void;
 }) {
+  // Position / NFL are already in the popover header. Roster status labels
+  // (starter / bench) are redundant with matchup context; keep richer status
+  // text (injury / lock notes from lineup). Prefer live box-score stats when present.
   const details: Array<{ label: string; value: string | number }> = [];
-  if (hasText(player.position)) details.push({ label: 'Position', value: player.position });
-  if (hasText(player.team)) details.push({ label: 'NFL', value: player.team });
-  if (hasText(player.status)) details.push({ label: 'Status', value: player.status });
+  if (hasText(player.stats)) details.push({ label: 'Stats', value: player.stats });
+  if (hasText(player.status) && !isRedundantRosterStatus(player.status)) {
+    details.push({ label: 'Status', value: player.status });
+  }
   if (hasText(player.injury)) details.push({ label: 'Injury', value: player.injury });
   if (hasText(player.byeWeek)) details.push({ label: 'Bye', value: player.byeWeek });
   if (hasText(player.salary)) details.push({ label: 'Salary', value: player.salary });

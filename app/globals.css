@@ -535,6 +535,8 @@ textarea {
 .player-meta {
   color: var(--muted);
   font-size: 0.8rem;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
 }
 
 .player-side {

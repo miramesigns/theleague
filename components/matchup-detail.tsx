@@ -18,6 +18,7 @@ function groupPlayers(players: MatchupPlayer[]) {
 function PlayerRow({ player, source }: { player: MatchupPlayer; source: MatchupDetailState['source'] }) {
   const score = source === 'schedule' ? 'TBD' : formatScore(player.score);
   const liveStateText = source === 'live' ? player.liveStateText || 'Yet to play' : player.status;
+  const statsText = player.statsText?.trim() || null;
 
   return (
     <div className="player-row">
@@ -27,13 +28,13 @@ function PlayerRow({ player, source }: { player: MatchupPlayer; source: MatchupD
             name: player.name,
             position: player.position,
             team: player.nflTeam,
-            status: player.status,
+            stats: statsText,
             score: source === 'schedule' ? null : player.score,
             projection: player.projection,
           }}
           triggerClassName="player-info-chip-matchup"
         />
-        <div className="player-meta">{player.position} · {player.id}</div>
+        {statsText ? <div className="player-meta">{statsText}</div> : null}
       </div>
       <div className="player-side">
         <div className="player-score">{score}</div>
