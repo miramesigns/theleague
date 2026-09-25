@@ -5,6 +5,7 @@ const PUBLIC_ASSET_PATHS = new Set([
   '/favicon.ico',
   '/icon.png',
   '/manifest.webmanifest',
+  '/mfl-banner-1200x450.jpg',
   '/sw.js',
   '/the-league-2026-banner.jpg',
   '/the-league-2026-championship-belt.png',
