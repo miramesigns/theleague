@@ -351,6 +351,7 @@ test('MFL-style simulation makes the projected favorite the favorite despite a c
     teamId,
     teamName: teamId,
     teamAbbrev: null,
+    record: null,
     isHome,
     score,
     result: null,
@@ -436,6 +437,56 @@ test('loadScoreboardState defaults to the current live week and uses live scorin
     assert.equal(result.matchups[0].home.summary.yetToPlay, 1);
     assert.equal(result.matchups[0].home.summary.winChance, null);
     assert.equal(result.matchups[0].away.summary.winChance, null);
+    assert.equal(result.matchups[0].home.record, null);
+    assert.equal(requests.some((request) => request.type === 'leagueStandings'), true);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreEnv();
+  }
+});
+
+test('loadScoreboardState attaches compact franchise records from leagueStandings', async () => {
+  const originalFetch = globalThis.fetch;
+  const leaguePayload = makeLeaguePayload();
+  const livePayload = makeLiveScoringPayload();
+  const schedulePayload = makeSchedulePayload();
+  const standingsPayload = {
+    leagueStandings: {
+      franchise: [
+        { id: '0001', h2hw: '2', h2hl: '1', h2ht: '0' },
+        { id: '0002', h2hw: '2', h2hl: '1', h2ht: '1' },
+        { id: '0003', h2hw: '1', h2hl: '2', h2ht: '0' },
+        { id: '0004', h2hw: '3', h2hl: '0', h2ht: '0' },
+        { id: '0005', h2hw: '0', h2hl: '3', h2ht: '0' },
+        { id: '0006', h2hw: '1', h2hl: '1', h2ht: '1' },
+        { id: '0007', h2hw: '2', h2hl: '0', h2ht: '1' },
+        { id: '0008', h2hw: '0', h2hl: '2', h2ht: '1' },
+        { id: '0009', h2hw: '1', h2hl: '2', h2ht: '0' },
+        { id: '0010', h2hw: '2', h2hl: '1', h2ht: '0' },
+        { id: '0011', h2hw: '0', h2hl: '1', h2ht: '2' },
+        { id: '0012', h2hw: '1', h2hl: '0', h2ht: '2' },
+      ],
+    },
+  };
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = new URL(String(input));
+    const type = url.searchParams.get('TYPE');
+
+    if (type === 'liveScoring') return createJsonResponse(livePayload);
+    if (type === 'league') return createJsonResponse(leaguePayload);
+    if (type === 'schedule') return createJsonResponse(schedulePayload);
+    if (type === 'leagueStandings') return createJsonResponse(standingsPayload);
+    return new Response('not found', { status: 404 });
+  }) as typeof fetch;
+
+  try {
+    delete (process.env as Record<string, string | undefined>).MFL_PRIMARY_FRANCHISE_ID;
+    const result = await loadScoreboardState('session-123');
+
+    assert.equal(result.source, 'live');
+    assert.equal(result.matchups[0].home.record, '2-1');
+    assert.equal(result.matchups[0].away.record, '2-1-1');
   } finally {
     globalThis.fetch = originalFetch;
     restoreEnv();

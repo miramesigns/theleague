@@ -387,6 +387,7 @@ textarea {
   border-radius: 18px;
   padding: 12px;
   min-height: 128px;
+  min-width: 0;
 }
 
 .matchup-team {
@@ -453,6 +454,7 @@ textarea {
 }
 
 .matchup-comparison-head > :last-child {
+  justify-content: flex-end;
   text-align: right;
 }
 
@@ -677,6 +679,58 @@ textarea {
 .team-name {
   font-weight: 700;
   line-height: 1.1;
+}
+
+.team-name-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35em;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.team-name-line .team-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.team-name-line .team-record {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 0.82em;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.matchup-score-card-identity {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.matchup-comparison-head .team-name-line {
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: inherit;
+}
+
+.matchup-comparison-head .team-name-line .team-name {
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: inherit;
+}
+
+.matchup-comparison-head .team-name-line .team-record {
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 0.9em;
 }
 
 .team-score {
