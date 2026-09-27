@@ -6,6 +6,7 @@ import {
   resolvePlayerLiveStatsText,
   type MflLiveStatBag,
 } from './mfl-live-stats.ts';
+import { loadFranchiseRecords } from './mfl-standings.ts';
 
 const LIVE_SCORES_ERROR_MESSAGE = 'Live data could not be loaded. Please sign in on the More tab and try again.';
 const MATCHUP_ERROR_MESSAGE = 'Matchup details could not be loaded. Please refresh and try again.';
@@ -41,6 +42,8 @@ export type MatchupTeam = {
   teamId: string;
   teamName: string;
   teamAbbrev: string | null;
+  /** Compact W-L or W-L-T from league standings; null when unavailable. */
+  record: string | null;
   isHome: boolean;
   score: number | null;
   result: string | null;
@@ -855,6 +858,7 @@ function parseMatchupTeam(
     teamId,
     teamName,
     teamAbbrev,
+    record: null,
     isHome,
     score,
     result,
@@ -962,6 +966,25 @@ function promotePrimaryMatchup(matchups: MatchupCard[], primaryFranchiseId: stri
   }));
 }
 
+function withTeamRecord(team: MatchupTeam, recordsById: Map<string, string>): MatchupTeam {
+  return {
+    ...team,
+    record: recordsById.get(team.teamId) ?? null,
+  };
+}
+
+function attachFranchiseRecords(matchups: MatchupCard[], recordsById: Map<string, string>): MatchupCard[] {
+  if (recordsById.size === 0) {
+    return matchups;
+  }
+
+  return matchups.map((matchup) => ({
+    ...matchup,
+    home: withTeamRecord(matchup.home, recordsById),
+    away: withTeamRecord(matchup.away, recordsById),
+  }));
+}
+
 function buildSuccessState(args: {
   source: Exclude<ScoresSource, 'error'>;
   currentWeek: number;
@@ -969,15 +992,17 @@ function buildSuccessState(args: {
   availableWeeks: number[];
   matchups: MatchupCard[];
   primaryFranchiseId: string | null;
+  recordsById?: Map<string, string>;
 }): ScoresPageState {
-  const { source, currentWeek, selectedWeek, availableWeeks, matchups, primaryFranchiseId } = args;
+  const { source, currentWeek, selectedWeek, availableWeeks, matchups, primaryFranchiseId, recordsById } = args;
+  const withRecords = attachFranchiseRecords(matchups, recordsById ?? new Map());
 
   return {
     source,
     currentWeek,
     selectedWeek,
     availableWeeks,
-    matchups: promotePrimaryMatchup(matchups, primaryFranchiseId),
+    matchups: promotePrimaryMatchup(withRecords, primaryFranchiseId),
     primaryFranchiseId,
     message:
       source === 'live'
@@ -1109,13 +1134,14 @@ export async function loadScoresPageState(
   requestedWeekParam?: string | null,
 ): Promise<ScoresPageState> {
   try {
-    const [liveScoringResponse, leagueResponse, scheduleResponse, playersResponse, projectedScoresResponse, primaryResolution] = await Promise.all([
+    const [liveScoringResponse, leagueResponse, scheduleResponse, playersResponse, projectedScoresResponse, primaryResolution, recordsById] = await Promise.all([
       fetchMflExport('liveScoring', { JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
       fetchMflExport('league', { JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
       fetchMflExport('schedule', { JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
       fetchMflExport('players', { JSON: '1' }, { sessionCookieValue, revalidate: 60 * 60 * 24 }),
       fetchMflExport('projectedScores', { JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
       resolvePrimaryFranchiseId(sessionCookieValue),
+      loadFranchiseRecords(sessionCookieValue),
     ]);
 
     if (!liveScoringResponse.ok || !leagueResponse.ok || !scheduleResponse.ok) {
@@ -1176,6 +1202,7 @@ export async function loadScoresPageState(
           availableWeeks: schedule.weeks,
           matchups: liveMatchups,
           primaryFranchiseId: primaryResolution?.franchiseId ?? null,
+          recordsById,
         });
       }
 
@@ -1193,6 +1220,7 @@ export async function loadScoresPageState(
             availableWeeks: schedule.weeks,
             matchups: resultsMatchups,
             primaryFranchiseId: primaryResolution?.franchiseId ?? null,
+            recordsById,
           });
         }
       }
@@ -1215,6 +1243,7 @@ export async function loadScoresPageState(
             availableWeeks: schedule.weeks,
             matchups: resultsMatchups,
             primaryFranchiseId: primaryResolution?.franchiseId ?? null,
+            recordsById,
           });
         }
       }
@@ -1228,6 +1257,7 @@ export async function loadScoresPageState(
           availableWeeks: schedule.weeks,
           matchups: scheduleMatchups,
           primaryFranchiseId: primaryResolution?.franchiseId ?? null,
+          recordsById,
         });
       }
 
@@ -1246,6 +1276,7 @@ export async function loadScoresPageState(
       availableWeeks: schedule.weeks,
       matchups: scheduleMatchups,
       primaryFranchiseId: primaryResolution?.franchiseId ?? null,
+      recordsById,
     });
   } catch {
     return buildErrorState();
@@ -1269,7 +1300,7 @@ export async function loadMatchupDetailState(
   }
 
   try {
-    const [currentLiveResponse, selectedLiveResponse, leagueResponse, playersResponse, projectedScoresResponse, statProjections, liveStatsById, primaryResolution] = await Promise.all([
+    const [currentLiveResponse, selectedLiveResponse, leagueResponse, playersResponse, projectedScoresResponse, statProjections, liveStatsById, primaryResolution, recordsById] = await Promise.all([
       fetchMflExport('liveScoring', { JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
       fetchMflExport('liveScoring', { W: String(selectedWeek), DETAILS: '1', JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
       fetchMflExport('league', { JSON: '1' }, { sessionCookieValue, cache: 'no-store' }),
@@ -1278,6 +1309,7 @@ export async function loadMatchupDetailState(
       loadMflStatProjections(selectedWeek, sessionCookieValue),
       loadMflLiveStatsById(selectedWeek, sessionCookieValue),
       resolvePrimaryFranchiseId(sessionCookieValue),
+      loadFranchiseRecords(sessionCookieValue),
     ]);
 
     if (!currentLiveResponse.ok || !selectedLiveResponse.ok || !leagueResponse.ok || !playersResponse.ok) {
@@ -1320,19 +1352,21 @@ export async function loadMatchupDetailState(
       return buildDetailErrorState(`No matchup was found for week ${selectedWeek}.`);
     }
 
+    const [enriched] = attachFranchiseRecords([matchup], recordsById);
+
     if (source === 'live') {
       const gamesByTeam = await loadNflScheduleGames(currentWeek);
       const teamByPlayerId = new Map([...playersById.entries()].map(([playerId, player]) => [playerId, player.team]));
 
-      matchup.home.players = addPlayerLiveState(matchup.home.players, teamByPlayerId, gamesByTeam);
-      matchup.away.players = addPlayerLiveState(matchup.away.players, teamByPlayerId, gamesByTeam);
+      enriched.home.players = addPlayerLiveState(enriched.home.players, teamByPlayerId, gamesByTeam);
+      enriched.away.players = addPlayerLiveState(enriched.away.players, teamByPlayerId, gamesByTeam);
     }
 
     return buildSelectedMatchupState({
       source,
       currentWeek,
       selectedWeek,
-      matchup,
+      matchup: enriched,
       primaryFranchiseId: primaryResolution?.franchiseId ?? null,
     });
   } catch {

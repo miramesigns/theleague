@@ -4,6 +4,7 @@ import type { MatchupDetailState, MatchupTeam, MatchupPlayer } from '@/lib/mfl-s
 import { isYetToPlayGame } from '@/lib/mfl-live-state';
 import { groupPlayersByPosition } from '@/lib/player-detail';
 import { MatchupSummary } from '@/components/matchup-summary';
+import { TeamNameWithRecord, teamNameAriaLabel } from '@/components/team-name-with-record';
 
 function formatScore(score: number | null): string {
   return score === null ? 'TBD' : score.toFixed(1);
@@ -52,11 +53,14 @@ function PlayerRow({ player, source }: { player: MatchupPlayer; source: MatchupD
 
 function TeamScoreCard({ team, isPrimary }: { team: MatchupTeam; isPrimary: boolean }) {
   return (
-    <section className={`matchup-score-card${isPrimary ? ' primary' : ''}`} aria-label={`${team.teamName} score`}>
+    <section
+      className={`matchup-score-card${isPrimary ? ' primary' : ''}`}
+      aria-label={`${teamNameAriaLabel(team.teamName, team.record)} score`}
+    >
       <div className="matchup-score-card-head">
-        <div>
+        <div className="matchup-score-card-identity">
           <div className="eyebrow">{team.isHome ? 'Home' : 'Away'}</div>
-          <div className="team-name">{team.teamName}</div>
+          <TeamNameWithRecord name={team.teamName} record={team.record} />
         </div>
         <span className={`tag ${team.status.toLowerCase()}`}>{team.status}</span>
       </div>
@@ -144,6 +148,8 @@ export function MatchupDetail({ source, message, currentWeek, selectedWeek, matc
   const statusLabel = source === 'live' ? 'Live feed' : source === 'results' ? 'Results' : source === 'schedule' ? 'Schedule' : 'Unavailable';
   const homePlayers = groupPlayers(matchup.home.players);
   const awayPlayers = groupPlayers(matchup.away.players);
+  const homeLabel = teamNameAriaLabel(matchup.home.teamName, matchup.home.record);
+  const awayLabel = teamNameAriaLabel(matchup.away.teamName, matchup.away.record);
 
   return (
     <section className="grid matchup-detail-view">
@@ -163,7 +169,7 @@ export function MatchupDetail({ source, message, currentWeek, selectedWeek, matc
         <div className="row">
           <div>
             <div className="eyebrow">Current score</div>
-            <div className="small muted">{matchup.home.teamName} vs {matchup.away.teamName}</div>
+            <div className="small muted">{homeLabel} vs {awayLabel}</div>
           </div>
           {matchup.primaryTeamId ? <span className="pill">My matchup</span> : null}
         </div>
@@ -175,8 +181,8 @@ export function MatchupDetail({ source, message, currentWeek, selectedWeek, matc
       </article>
 
       <div className="matchup-comparison-head" aria-hidden="true">
-        <div>{matchup.home.teamName}</div>
-        <div>{matchup.away.teamName}</div>
+        <TeamNameWithRecord name={matchup.home.teamName} record={matchup.home.record} className="matchup-comparison-team" />
+        <TeamNameWithRecord name={matchup.away.teamName} record={matchup.away.record} className="matchup-comparison-team" />
       </div>
 
       <RosterComparison label="Starters" homePlayers={homePlayers.starters} awayPlayers={awayPlayers.starters} source={source} />

@@ -58,6 +58,49 @@ function record(wins: number, losses: number, ties: number): string {
   return `${wins}-${losses}-${ties}`;
 }
 
+/** Compact W-L or W-L-T for UI (omit ties when zero). */
+export function formatCompactRecord(wins: number, losses: number, ties: number): string {
+  return ties > 0 ? `${wins}-${losses}-${ties}` : `${wins}-${losses}`;
+}
+
+/** Map franchise id → compact record from a leagueStandings export payload. */
+export function parseFranchiseRecords(payload: unknown): Map<string, string> {
+  const root = toRecord(payload);
+  const standings = toRecord(root?.leagueStandings ?? root?.standings);
+  const franchises = toRecords(standings?.franchise);
+  const records = new Map<string, string>();
+
+  for (const franchise of franchises) {
+    const franchiseId = text(franchise.id);
+    if (!franchiseId) continue;
+    const wins = count(franchise.h2hw ?? franchise.wins);
+    const losses = count(franchise.h2hl ?? franchise.losses);
+    const ties = count(franchise.h2ht ?? franchise.ties);
+    records.set(franchiseId, formatCompactRecord(wins, losses, ties));
+  }
+
+  return records;
+}
+
+/** Standings change slowly; cache so Scores auto-refresh does not re-hit MFL each minute. */
+export const FRANCHISE_RECORDS_REVALIDATE_SECONDS = 60 * 15;
+
+export async function loadFranchiseRecords(sessionCookieValue: string | null): Promise<Map<string, string>> {
+  if (!sessionCookieValue?.trim()) return new Map();
+
+  try {
+    const response = await fetchMflExport(
+      'leagueStandings',
+      { JSON: '1' },
+      { sessionCookieValue, revalidate: FRANCHISE_RECORDS_REVALIDATE_SECONDS },
+    );
+    if (!response.ok) return new Map();
+    return parseFranchiseRecords(await response.json());
+  } catch {
+    return new Map();
+  }
+}
+
 function parseLeagueDirectory(payload: unknown): {
   names: Map<string, string>;
   franchiseDivisions: Map<string, string>;

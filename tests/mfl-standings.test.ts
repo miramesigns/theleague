@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { groupStandingsByDivision, parseStandings } from '../lib/mfl-standings.ts';
+import { formatCompactRecord, groupStandingsByDivision, parseFranchiseRecords, parseStandings } from '../lib/mfl-standings.ts';
 
 test('parseStandings maps the complete MFL standings columns without dropping zeroes', () => {
   const rows = parseStandings({
@@ -45,4 +45,27 @@ test('parseStandings maps the complete MFL standings columns without dropping ze
   assert.equal(rows[1].averagePointsFor, 40.1);
   assert.equal(rows[1].powerRank, 8);
   assert.deepEqual(groupStandingsByDivision(rows).map((division) => division.name), ['Money']);
+});
+
+test('formatCompactRecord omits ties when zero and keeps them when present', () => {
+  assert.equal(formatCompactRecord(2, 1, 0), '2-1');
+  assert.equal(formatCompactRecord(2, 1, 1), '2-1-1');
+  assert.equal(formatCompactRecord(0, 0, 0), '0-0');
+});
+
+test('parseFranchiseRecords maps compact records from leagueStandings', () => {
+  const records = parseFranchiseRecords({
+    leagueStandings: {
+      franchise: [
+        { id: '0001', h2hw: '2', h2hl: '1', h2ht: '0' },
+        { id: '0002', h2hw: '2', h2hl: '1', h2ht: '1' },
+        { id: '0003', wins: '3', losses: '0', ties: '0' },
+      ],
+    },
+  });
+
+  assert.equal(records.get('0001'), '2-1');
+  assert.equal(records.get('0002'), '2-1-1');
+  assert.equal(records.get('0003'), '3-0');
+  assert.equal(records.has('9999'), false);
 });

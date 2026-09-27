@@ -4,6 +4,7 @@ import { AutoRefresh } from '@/components/auto-refresh';
 import { WeekPicker } from '@/components/week-picker';
 import type { MatchupCard, MatchupTeam, ScoresPageState } from '@/lib/mfl-scores';
 import { MatchupSummary } from '@/components/matchup-summary';
+import { TeamNameWithRecord, teamNameAriaLabel } from '@/components/team-name-with-record';
 import { shortFranchiseLabel } from '@/lib/mfl-trades';
 
 function formatScore(score: number | null): string {
@@ -59,7 +60,7 @@ function TeamCell({ team }: { team: MatchupCard['home'] }) {
         <span className="team-role">{team.isHome ? 'Home' : 'Away'}</span>
         <span className={`tag ${team.status.toLowerCase()}`}>{teamBadge(team.status)}</span>
       </div>
-      <div className="team-name">{team.teamName}</div>
+      <TeamNameWithRecord name={team.teamName} record={team.record} />
       <div className="team-score">{formatScore(team.score)}</div>
       <MatchupSummary team={team} showUnavailableChance={team.summary.winChance === null} />
       <div className="team-foot">
@@ -166,13 +167,15 @@ export function ScoreBoard({
           {matchups.map((matchup, index) => {
             const label = matchup.isPrimary ? 'My matchup' : `Matchup ${index + 1}`;
             const href = `/scores/week/${weekHrefBase}/matchup/${matchup.hrefFranchiseId}`;
+            const homeLabel = teamNameAriaLabel(matchup.home.teamName, matchup.home.record);
+            const awayLabel = teamNameAriaLabel(matchup.away.teamName, matchup.away.record);
 
             return (
               <Link
                 key={`${matchup.home.teamId}-${matchup.away.teamId}`}
                 href={href}
                 className={`matchup-link${matchup.isPrimary ? ' primary' : ''}`}
-                aria-label={`${label} ${matchup.home.teamName} vs ${matchup.away.teamName}`}
+                aria-label={`${label} ${homeLabel} vs ${awayLabel}`}
               >
                 <article className={`panel matchup-card${matchup.isPrimary ? ' primary' : ''}`}>
                   <div className="matchup-card-head">
