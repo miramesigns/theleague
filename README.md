@@ -22,8 +22,8 @@ A phone-first Next.js App Router companion for a MyFantasyLeague league.
 | Flow | Read from MFL | Draft in UI | Live write to MFL |
 | --- | --- | --- | --- |
 | Scores / Rosters / Standings / Lineup editor | Yes | Lineup yes | Lineup submit via `/api/mfl/lineup` after confirm dialog |
-| Free agents / FAAB rules / recent waivers | Yes (`freeAgents`, `league`, `transactions`) | Claim draft yes | `/api/waivers/claim` requires `confirmed: true` and currently returns **501 stub** |
-| Pending waivers | Yes when session cookie present (`pendingWaivers`) | — | Same claim stub |
+| Free agents / FAAB rules / recent waivers | Yes (`freeAgents`, `league`, `transactions`) | Claim draft yes | `/api/waivers/claim` requires `confirmed: true` then live MFL `blindBidWaiverRequest` |
+| Pending waivers | Yes when session cookie present (`pendingWaivers`) | — | Claim submit verifies pending list when possible |
 | Trades history / trade bait | Yes (`transactions` TRADE, `tradeBait`, `futureDraftPicks`; `assets` when signed in) | Propose draft yes (players + picks) | `/api/trades/propose` requires `confirmed: true` then live MFL `tradeProposal` (optional amend: revoke then propose) |
 | Pending trades | Yes when session cookie present (`pendingTrades`) | Accept / Decline / Cancel / Amend | `/api/trades/respond` requires `confirmed: true` then live MFL `tradeResponse` (`accept` / `reject` / `revoke`) |
 | Notifications | Yes (transactions + pending trades + live scoring) | Category prefs + Web Push subscribe | Background poll (`/api/push/poll`) discovers new events and sends Web Push with durable dedupe |
@@ -131,7 +131,7 @@ Verified live export types used in this slice:
 - The login route performs the upstream MFL credential exchange server-side and stores only the returned `MFL_USER_ID` session cookie.
 - Server-side API routes can read that cookie through `cookies()` without exposing credentials to the browser.
 - The lineup import route validates the authenticated franchise and verifies the saved MFL starters before reporting success.
-- Waiver submit routes refuse unconfirmed requests and do not write to MFL yet. Trade propose/respond routes refuse unconfirmed requests, check request origin, and write via MFL import (`tradeProposal` / `tradeResponse`).
+- Waiver claim and trade propose/respond routes refuse unconfirmed requests, check request origin, and write via MFL import (`blindBidWaiverRequest` / `tradeProposal` / `tradeResponse`).
 - Do not add real secrets to the repo.
 
 ## Phone smoke checklist
@@ -139,7 +139,7 @@ Verified live export types used in this slice:
 1. Sign in from the header / landing auth control.
 2. Bottom tabs: Scores → Lineup → Roster → Standings still load.
 3. More → Notifications: alerts appear; mark read; Enable push for email-style Web Push (trades, waivers, etc.). iPhone: Add to Home Screen.
-4. More → Waivers: FAAB rules + balances, searchable free agents, draft claim → confirm → expect 501 gated message.
+4. More → Waivers: FAAB rules + balances, searchable free agents, draft claim → confirm → live MFL FAAB submit (pending claim appears).
 5. More → Trades: pending offers show FantasyCalc side totals + KTC/FC calculator links; Accept/Decline for offers to you; Cancel / Amend & resend for offers you sent; draft offer → confirm → live MFL submit.
    - Smoke example: London (15751) vs Tucker Kraft (16222) + Vele (16788) should read roughly “favors them” on FantasyCalc 1QB dynasty values.
 
