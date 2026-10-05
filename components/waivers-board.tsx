@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { formatMflMoney, type FreeAgentRow, type WaiversPageState } from '@/lib/mfl-waivers';
@@ -9,6 +11,7 @@ import { getWaiverWindow } from '@/lib/waiver-window';
 const POSITIONS = ['ALL', 'QB', 'RB', 'WR', 'TE', 'PK', 'Def'] as const;
 
 export function WaiversBoard({ state }: { state: WaiversPageState }) {
+  const router = useRouter();
   const [query, setQuery] = useState('');
   const [position, setPosition] = useState<(typeof POSITIONS)[number]>('ALL');
   const [selected, setSelected] = useState<FreeAgentRow | null>(null);
@@ -55,21 +58,27 @@ export function WaiversBoard({ state }: { state: WaiversPageState }) {
           comments,
         }),
       });
-      const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-      if (response.status === 501) {
-        setNotice(payload?.message || 'Claim draft saved. Live MFL submit stays gated.');
-      } else if (!response.ok) {
-        setNotice(payload?.message || 'Claim could not be queued.');
+      const payload = (await response.json().catch(() => null)) as { ok?: boolean; message?: string } | null;
+      if (!response.ok || !payload?.ok) {
+        setNotice(payload?.message || 'Claim could not be submitted to MFL.');
       } else {
-        setNotice(payload?.message || 'Claim submitted.');
+        const message = payload?.message || 'Waiver claim submitted to MFL.';
+        setNotice(message);
+        toast.success(message);
+        setDropId('');
+        setComments('');
+        router.refresh();
       }
     } catch {
-      setNotice('Claim could not be queued.');
+      setNotice('Claim could not be submitted to MFL.');
     } finally {
       setBusy(false);
       setReviewOpen(false);
     }
   };
+
+  const bidLabel = formatMflMoney(Number(bidAmount) || 0);
+  const dropHint = dropId.trim() ? ` Drop player id ${dropId.trim()}.` : '';
 
   return (
     <div className="stack waiver-board">
@@ -154,7 +163,7 @@ export function WaiversBoard({ state }: { state: WaiversPageState }) {
       {selected ? (
         <section className="panel section">
           <h2 className="eyebrow">Draft claim</h2>
-          <p className="small muted">Builds a bid locally. Live MFL submit requires confirmation and currently returns a safe 501 stub.</p>
+          <p className="small muted">Review your bid, then confirm to submit a live FAAB claim to MFL.</p>
           <div className="stack" style={{ marginTop: 12 }}>
             <div className="stat-row"><span>Player</span><strong>{selected.name}</strong></div>
             <label className="field-label">
@@ -208,9 +217,13 @@ export function WaiversBoard({ state }: { state: WaiversPageState }) {
       <ConfirmDialog
         open={reviewOpen}
         busy={busy}
-        title="Confirm waiver claim draft"
-        message={selected ? `Queue a ${formatMflMoney(Number(bidAmount) || 0)} claim for ${selected.name}? Live MFL write stays disabled until this stub is intentionally enabled.` : ''}
-        confirmLabel="Confirm draft"
+        title="Confirm waiver claim"
+        message={
+          selected
+            ? `Submit a ${bidLabel} FAAB claim for ${selected.name} to live MFL?${dropHint} This cannot be undone from here.`
+            : ''
+        }
+        confirmLabel="Confirm claim"
         onCancel={() => setReviewOpen(false)}
         onConfirm={submitClaim}
       />

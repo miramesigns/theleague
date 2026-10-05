@@ -1,61 +1,88 @@
 import { NextResponse } from 'next/server.js';
 
 import { getMflSessionCookieValue } from '@/lib/mfl-session';
+import { importBlindBidWaiverClaim, validateWaiverClaimInput } from '@/lib/mfl-waiver-writes';
 
 export const dynamic = 'force-dynamic';
 
-type ClaimPayload = {
-  confirmed?: boolean;
-  playerId?: string;
-  bidAmount?: number;
-  dropPlayerIds?: string[];
-  comments?: string;
-};
+function deriveExpectedOrigin(request: Request): string | null {
+  const headers = request.headers;
+  const requestUrl = new URL(request.url);
+  const host = headers.get('x-forwarded-host') || headers.get('host') || requestUrl.host;
+  if (!host) return null;
+
+  const proto = headers.get('x-forwarded-proto') || requestUrl.protocol.replace(':', '') || 'https';
+  return `${proto}://${host}`;
+}
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 export async function POST(request: Request) {
-  const sessionCookieValue = await getMflSessionCookieValue();
-  if (!sessionCookieValue) {
-    return NextResponse.json({ ok: false, message: 'Login required before a waiver claim can be queued.' }, { status: 401 });
+  const expectedOrigin = deriveExpectedOrigin(request);
+  const origin = request.headers.get('origin');
+  if (!expectedOrigin || !origin || origin !== expectedOrigin) {
+    return NextResponse.json({ ok: false, message: 'Request origin is not allowed.' }, { status: 403 });
   }
 
-  const payload = (await request.json().catch(() => null)) as ClaimPayload | null;
+  const sessionCookieValue = await getMflSessionCookieValue();
+  if (!sessionCookieValue) {
+    return NextResponse.json({ ok: false, message: 'Login required before a waiver claim can be submitted.' }, { status: 401 });
+  }
+
+  const payload = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!isPlainRecord(payload)) {
     return NextResponse.json({ ok: false, message: 'Invalid request body.' }, { status: 400 });
   }
 
-  if (!payload.confirmed) {
+  if (payload.confirmed !== true) {
     return NextResponse.json({ ok: false, message: 'Explicit confirmation required.' }, { status: 400 });
   }
 
-  const playerId = typeof payload.playerId === 'string' ? payload.playerId.trim() : '';
-  if (!playerId) {
-    return NextResponse.json({ ok: false, message: 'A free-agent player is required.' }, { status: 400 });
+  const validated = validateWaiverClaimInput({
+    playerId: payload.playerId,
+    bidAmount: payload.bidAmount,
+    dropPlayerIds: payload.dropPlayerIds,
+    comments: payload.comments,
+    round: payload.round,
+    replaceExisting: payload.replaceExisting,
+  });
+
+  if (!validated.ok) {
+    return NextResponse.json({ ok: false, message: validated.message }, { status: 400 });
   }
 
-  const bidAmount = typeof payload.bidAmount === 'number' && Number.isFinite(payload.bidAmount) ? payload.bidAmount : null;
-  if (bidAmount === null || bidAmount < 0) {
-    return NextResponse.json({ ok: false, message: 'A valid FAAB bid is required.' }, { status: 400 });
-  }
+  try {
+    const result = await importBlindBidWaiverClaim({
+      sessionCookieValue,
+      playerId: validated.value.playerId,
+      bidAmount: validated.value.bidAmount,
+      dropPlayerIds: validated.value.dropPlayerIds,
+      comments: validated.value.comments,
+      round: validated.value.round,
+      replaceExisting: validated.value.replaceExisting,
+    });
 
-  const dropPlayerIds = Array.isArray(payload.dropPlayerIds)
-    ? payload.dropPlayerIds.filter((id): id is string => typeof id === 'string' && Boolean(id.trim()))
-    : [];
+    if (!result.ok) {
+      return NextResponse.json({ ok: false, message: result.message }, { status: result.status });
+    }
 
-  return NextResponse.json(
-    {
-      ok: false,
-      message: 'Safe TODO stub: live MFL waiver/FAAB submit is not enabled yet. Draft was accepted locally and still requires ask-before-send confirmation before any future write.',
-      draft: {
-        playerId,
-        bidAmount,
-        dropPlayerIds,
-        comments: typeof payload.comments === 'string' ? payload.comments.slice(0, 280) : '',
+    return NextResponse.json(
+      {
+        ok: true,
+        message: result.message,
+        verifiedPending: result.verifiedPending,
+        draft: {
+          playerId: result.draft.playerId,
+          bidAmount: result.draft.bidAmount,
+          dropPlayerIds: result.draft.dropPlayerIds,
+          comments: result.draft.comments ?? '',
+        },
       },
-    },
-    { status: 501 },
-  );
+      { status: 200 },
+    );
+  } catch {
+    return NextResponse.json({ ok: false, message: 'Waiver claim could not be submitted to MFL.' }, { status: 503 });
+  }
 }
