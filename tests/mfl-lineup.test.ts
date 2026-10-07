@@ -13,6 +13,7 @@ import {
   normalizeLineupInjuryDesignation,
   parseLineupRules,
   resolveHasSubmittedLineup,
+  resolveLineupCanToggle,
   resolveRosterPlayerName,
   validateLineupSubmission,
 } from '../lib/mfl-lineup.ts';
@@ -342,6 +343,22 @@ function makeMyLeaguesPayload(franchiseId = '0004') {
 test('formatLineupSubmissionCue uses Daniel short copy', () => {
   assert.equal(formatLineupSubmissionCue(2, false), 'week 2 not submitted');
   assert.equal(formatLineupSubmissionCue(8, true), 'submitted');
+});
+
+test('resolveLineupCanToggle lets unlocked bye and Out starters be benched', () => {
+  assert.equal(resolveLineupCanToggle({ locked: false, bye: true, injury: null, selected: true }), true);
+  assert.equal(resolveLineupCanToggle({ locked: false, bye: true, injury: null, selected: false }), false);
+  assert.equal(resolveLineupCanToggle({ locked: false, bye: false, injury: 'Out', selected: true }), true);
+  assert.equal(resolveLineupCanToggle({ locked: false, bye: false, injury: 'Out', selected: false }), false);
+  assert.equal(resolveLineupCanToggle({
+    locked: false,
+    bye: true,
+    injury: 'Injured Reserve',
+    selected: true,
+  }), true);
+  assert.equal(resolveLineupCanToggle({ locked: false, bye: false, injury: 'Questionable', selected: false }), true);
+  assert.equal(resolveLineupCanToggle({ locked: true, bye: false, injury: null, selected: true }), false);
+  assert.equal(resolveLineupCanToggle({ locked: true, bye: true, injury: null, selected: true }), false);
 });
 
 test('resolveHasSubmittedLineup treats identical pre-kickoff starters as carried, not submitted', () => {
@@ -904,6 +921,43 @@ test('validateLineupSubmission rejects duplicates, roster mismatches, locks, bye
 
   assert.equal(empty.ok, false);
   assert.match(empty.message, /empty lineup/i);
+});
+
+test('validateLineupSubmission rejects starting a bye player but allows removing an unlocked bye starter', () => {
+  const byeBench = {
+    id: '00345', name: 'Wide Receiver Bye', position: 'WR', team: 'NYJ', rosterStatus: 'B', locked: false,
+    selected: false, bye: 'Bye', opponent: null, homeAway: null, kickoffUtc: null, kickoffLocal: null,
+    injury: null, projection: null, startPercentage: null, rosterRank: 1, statusText: 'Bye week',
+    availability: 'bye', canToggle: false, group: 'WR',
+  } as LineupRosterSnapshot;
+  const byeStarter = { ...byeBench, rosterStatus: 'S' as const, selected: true, canToggle: true };
+  const healthyStarter = {
+    id: '00123', name: 'Quarterback One', position: 'QB', team: 'WAS', rosterStatus: 'S', locked: false,
+    selected: true, bye: null, opponent: 'PHI', homeAway: 'home', kickoffUtc: 1893456000, kickoffLocal: 'Sun 1:00 PM ET',
+    injury: null, projection: null, startPercentage: null, rosterRank: 1, statusText: 'Available',
+    availability: 'available', canToggle: true, group: 'QB',
+  } as LineupRosterSnapshot;
+
+  const rejected = validateLineupSubmission({
+    rules: { positions: [], flexSlots: 0, flexEligiblePositions: [], totalMin: 1, totalMax: 1 },
+    playersById: new Map([['00345', byeBench], ['00123', healthyStarter]]),
+    rosterPlayerIds: new Set(['00123', '00345']),
+    starters: ['00345'],
+    comments: '',
+    clear: false,
+  });
+  assert.equal(rejected.ok, false);
+  assert.match(rejected.message, /bye/i);
+
+  const removed = validateLineupSubmission({
+    rules: { positions: [], flexSlots: 0, flexEligiblePositions: [], totalMin: 1, totalMax: 1 },
+    playersById: new Map([['00345', byeStarter], ['00123', healthyStarter]]),
+    rosterPlayerIds: new Set(['00123', '00345']),
+    starters: ['00123'],
+    comments: '',
+    clear: false,
+  });
+  assert.equal(removed.ok, true);
 });
 
 test('validateLineupSubmission rejects newly starting Out but allows removing an already selected Out player', () => {

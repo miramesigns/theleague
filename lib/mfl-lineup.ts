@@ -503,6 +503,23 @@ export function formatLineupSubmissionCue(selectedWeek: number, hasSubmittedLine
   return hasSubmittedLineup ? 'submitted' : `week ${selectedWeek} not submitted`;
 }
 
+/**
+ * Unlocked starters (including bye / Out) can always be benched.
+ * Bench players on bye or Out cannot be started. Locked players stay fixed.
+ */
+export function resolveLineupCanToggle(args: {
+  locked: boolean;
+  bye: boolean;
+  injury: string | null;
+  selected: boolean;
+}): boolean {
+  if (args.locked) return false;
+  if (args.selected) return true;
+  if (args.bye) return false;
+  if (args.injury === 'Out') return false;
+  return true;
+}
+
 function deriveStartRanks(
   topStarters: Map<string, number>,
   playersDirectory: Map<string, { name: string; position: string; team: string | null }>,
@@ -796,7 +813,12 @@ function buildRows(args: {
       rosterRank: args.startRanks.get(player.id) ?? null,
       statusText,
       availability,
-      canToggle: !locked && !bye && (injury !== 'Out' || selected),
+      canToggle: resolveLineupCanToggle({
+        locked,
+        bye: Boolean(bye),
+        injury,
+        selected,
+      }),
       group: groupPosition(position),
     });
   }

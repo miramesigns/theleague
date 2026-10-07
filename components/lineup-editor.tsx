@@ -213,13 +213,24 @@ export function LineupEditor({ state }: { state: LineupPageState }) {
               {group.rows.map((row) => {
                 const selected = Boolean(draft[row.id]);
                 const meta = formatLineupRowMeta(row);
+                const interactive = row.canToggle && !busy;
                 return (
-                  <button
+                  // Div + role=button: PlayerInfoChip is itself a <button>; nesting
+                  // <button> inside <button> is invalid HTML and breaks row taps on iOS.
+                  <div
                     key={row.id}
-                    type="button"
+                    role="button"
+                    tabIndex={interactive ? 0 : -1}
                     className={`lineup-option${selected ? ' selected' : ''}${!row.canToggle ? ' disabled' : ''}`}
                     onClick={() => updateSelection(row.id)}
-                    disabled={busy || !row.canToggle}
+                    onKeyDown={(event) => {
+                      if (!interactive) return;
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        updateSelection(row.id);
+                      }
+                    }}
+                    aria-disabled={!interactive}
                     aria-pressed={selected}
                     aria-label={`${meta.ariaLabel} ${selected ? 'Starter' : 'Bench'}. ${row.statusText}.`}
                   >
@@ -247,7 +258,7 @@ export function LineupEditor({ state }: { state: LineupPageState }) {
                       <span className="player-meta">{row.injury ? `Injury: ${row.injury}` : 'Injury: None reported'}</span>
                       <span className="player-meta">{row.byeWeek === null ? 'Bye: unavailable' : `Bye ${row.byeWeek}`}{row.bye ? ' · This week' : ''} · {row.locked ? 'Locked' : 'Unlocked'}</span>
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>
