@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { fetchMflExport } from '../lib/mfl.ts';
 import {
+  deriveStarterPhaseSummary,
   estimateMflStyleWinChances,
   LIVE_SCORES_ERROR_MESSAGE,
   loadMatchupDetailState,
@@ -793,4 +794,24 @@ test('loadMatchupDetailState maps live player ids to names and hides fake scores
     globalThis.fetch = originalFetch;
     restoreEnv();
   }
+});
+
+test('starter phase counts use per-player game clocks over stale franchise totals', () => {
+  const mk = (id: string, secs: number | null) => ({
+    id, name: id, position: 'WR', nflTeam: 'NYG', status: 'starter' as const,
+    score: 0, projection: 10, gameSecondsRemaining: secs, statsText: null,
+  });
+  const players = [
+    ...Array.from({ length: 8 }, (_, i) => mk(`p${i}`, 0)),
+    mk('mnf1', 3600),
+    mk('mnf2', 1200),
+  ];
+  const summary = deriveStarterPhaseSummary(
+    { playersCurrentlyPlaying: '0', playersYetToPlay: '0', starters: '10' },
+    players as never,
+    'live',
+  );
+  assert.equal(summary.played, 8);
+  assert.equal(summary.playing, 1);
+  assert.equal(summary.yetToPlay, 1);
 });
