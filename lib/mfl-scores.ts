@@ -212,10 +212,16 @@ function buildDetailErrorState(message = MATCHUP_ERROR_MESSAGE): MatchupDetailSt
   };
 }
 
-function determineLiveStatus(franchise: Record<string, unknown>): MatchupTeam['status'] {
+function determineLiveStatus(franchise: Record<string, unknown>, summary?: MatchupTeamSummary): MatchupTeam['status'] {
   const secondsRemaining = safeNumber(franchise.gameSecondsRemaining) ?? 0;
-  const playersCurrentlyPlaying = safeNumber(franchise.playersCurrentlyPlaying) ?? 0;
-  const playersYetToPlay = safeNumber(franchise.playersYetToPlay) ?? 0;
+  const playersCurrentlyPlaying = summary?.playing ?? safeNumber(franchise.playersCurrentlyPlaying) ?? 0;
+  const playersYetToPlay = summary?.yetToPlay ?? safeNumber(franchise.playersYetToPlay) ?? 0;
+
+  if (summary && summary.playing !== null && summary.yetToPlay !== null) {
+    if (summary.playing > 0) return 'Live';
+    if (summary.yetToPlay > 0) return (summary.played ?? 0) > 0 ? 'Live' : 'Scheduled';
+    return 'Final';
+  }
 
   if (secondsRemaining > 0 || playersCurrentlyPlaying > 0) {
     return 'Live';
@@ -389,7 +395,7 @@ function classifyStarterPlayer(player: MatchupPlayer): 'played' | 'playing' | 'y
   return 'playing';
 }
 
-function deriveStarterPhaseSummary(franchise: Record<string, unknown>, players: MatchupPlayer[], source: ScoresSource): MatchupTeamSummary {
+export function deriveStarterPhaseSummary(franchise: Record<string, unknown>, players: MatchupPlayer[], source: ScoresSource): MatchupTeamSummary {
   if (source === 'schedule') {
     return {
       starterTotal: null,
@@ -406,7 +412,12 @@ function deriveStarterPhaseSummary(franchise: Record<string, unknown>, players: 
   const playing = toNonNegativeInteger(franchise.playersCurrentlyPlaying);
   const yetToPlay = toNonNegativeInteger(franchise.playersYetToPlay);
 
-  if (starterTotal !== null && playing !== null && yetToPlay !== null && playing + yetToPlay <= starterTotal) {
+  // Prefer per-starter game clocks: MFL's franchise-level playersCurrentlyPlaying /
+  // playersYetToPlay totals can read 0 while starters still have games left
+  // (e.g. Monday night), which made every starter look "played".
+  const hasPerStarterClocks = starterPlayers.length > 0 && starterPlayers.some((player) => player.gameSecondsRemaining !== null);
+
+  if (!hasPerStarterClocks && starterTotal !== null && playing !== null && yetToPlay !== null && playing + yetToPlay <= starterTotal) {
     return {
       starterTotal,
       played: starterTotal - playing - yetToPlay,
@@ -445,7 +456,7 @@ function deriveStarterPhaseSummary(franchise: Record<string, unknown>, players: 
 
   return {
     starterTotal,
-    played: starterTotal !== null ? starterTotal - playingCount - yetToPlayCount : playedCount,
+    played: playedCount + Math.max(0, (starterTotal ?? starterPlayers.length) - starterPlayers.length),
     playing: playingCount,
     yetToPlay: yetToPlayCount,
     winChance: null,
@@ -864,7 +875,7 @@ function parseMatchupTeam(
     result,
     status:
       source === 'live'
-        ? determineLiveStatus(franchise)
+        ? determineLiveStatus(franchise, summary)
         : source === 'results'
           ? 'Final'
           : score !== null || result !== null
