@@ -605,6 +605,106 @@ function poisson(random: SeededRandom, mean: number): number {
   return count;
 }
 
+/** Typical full-game fantasy points by position when MFL projections are missing. */
+const LEAGUE_AVERAGE_POINTS_BY_POSITION: Record<string, number> = {
+  QB: 18,
+  TMQB: 18,
+  RB: 12,
+  WR: 11,
+  TE: 8,
+  PK: 8,
+  K: 8,
+  DEF: 8,
+};
+
+const LEAGUE_AVERAGE_STARTER_POINTS = 10;
+
+function resolveStatProjection(
+  player: MatchupPlayer,
+  statProjections: MflStatProjections,
+): MflStatProjection | undefined {
+  if (player.position.toLowerCase() === 'def') {
+    return player.nflTeam ? statProjections.teams.get(player.nflTeam) : undefined;
+  }
+
+  return statProjections.players.get(player.id);
+}
+
+function expectedPointsFromStatProjection(player: MatchupPlayer, projection: MflStatProjection): number {
+  if (player.position.toLowerCase() === 'def') {
+    return Math.max(
+      0,
+      (projection.IC ?? 0) * 2 +
+        (projection.FC ?? 0) * 2 +
+        (projection.SK ?? 0) +
+        12.5 -
+        (projection.OPA ?? 0) * 0.5,
+    );
+  }
+
+  const completions = projection.PC ?? 0;
+  const rushes = projection.RA ?? 0;
+  const receptions = projection.CC ?? 0;
+  const passYards = completions * (projection.APY ?? 0);
+  const rushYards = rushes * (projection.ARY ?? 0);
+  const recYards = receptions * (projection.ACY ?? 0);
+  const fieldGoals = projection['#F'] ?? 0;
+
+  return Math.max(
+    0,
+    (projection['#P'] ?? 0) * 6 +
+      (projection['#R'] ?? 0) * 6 +
+      (projection['#C'] ?? 0) * 6 +
+      (projection.P2 ?? 0) * 2 +
+      (projection.R2 ?? 0) * 2 +
+      (projection.C2 ?? 0) * 2 +
+      (projection.EP ?? 0) -
+      (projection.EM ?? 0) -
+      (projection.IN ?? 0) * 2 +
+      passYards * 0.1 +
+      rushYards * 0.1 +
+      recYards * 0.1 +
+      receptions +
+      fieldGoals * 3.5,
+  );
+}
+
+function fallbackPointProjection(player: MatchupPlayer, statProjection?: MflStatProjection): number {
+  if (statProjection) {
+    return expectedPointsFromStatProjection(player, statProjection);
+  }
+
+  const minimum = MINIMUM_PLAYER_PROJECTIONS[player.position]
+    ?? (player.position.toLowerCase() === 'def' ? MINIMUM_TEAM_PROJECTION : undefined);
+  if (minimum) {
+    return expectedPointsFromStatProjection(player, minimum);
+  }
+
+  return LEAGUE_AVERAGE_POINTS_BY_POSITION[player.position.toUpperCase()]
+    ?? LEAGUE_AVERAGE_POINTS_BY_POSITION[player.position]
+    ?? LEAGUE_AVERAGE_STARTER_POINTS;
+}
+
+function simulateRemainingFromMean(
+  playerId: string,
+  week: number,
+  remainingMean: number,
+  remainingDeviation: number,
+): number[] {
+  const random = createMflStyleRandom(playerId, week);
+  const scoringComponents = 8;
+  return Array.from({ length: WIN_PROBABILITY_SIMULATIONS }, () => {
+    let remainingPoints = 0;
+    for (let component = 0; component < scoringComponents; component += 1) {
+      remainingPoints += random.normal(
+        remainingMean / scoringComponents,
+        remainingDeviation / Math.sqrt(scoringComponents),
+      );
+    }
+    return Math.max(0, remainingPoints);
+  });
+}
+
 function simulateFromStatProjection(
   player: MatchupPlayer,
   projection: MflStatProjection,
@@ -666,16 +766,15 @@ function simulatePlayerRemainingPoints(
   player: MatchupPlayer,
   week: number,
   statProjections: MflStatProjections,
-): number[] | null {
+): number[] {
   if (player.status !== 'starter' || player.gameSecondsRemaining === 0) {
     return Array(WIN_PROBABILITY_SIMULATIONS).fill(0);
   }
 
-  if (player.gameSecondsRemaining === null) {
-    return null;
-  }
-
-  let secondsRemaining = Math.max(0, Math.min(3600, player.gameSecondsRemaining));
+  // Missing clocks are treated like yet-to-play (full game), matching phase counts.
+  let secondsRemaining = player.gameSecondsRemaining === null
+    ? 3600
+    : Math.max(0, Math.min(3600, player.gameSecondsRemaining));
   if (secondsRemaining < 360) {
     // MFL lengthens the final six minutes slightly because late-game plays are
     // less evenly distributed. Possession is unavailable in the export, so use
@@ -683,35 +782,30 @@ function simulatePlayerRemainingPoints(
     secondsRemaining += 0.5 * secondsRemaining * (360 - secondsRemaining) / 360;
   }
 
-  const statProjection = player.position.toLowerCase() === 'def'
-    ? player.nflTeam ? statProjections.teams.get(player.nflTeam) : undefined
-    : statProjections.players.get(player.id);
-  if (statProjection && secondsRemaining === 3600) {
+  const statProjection = resolveStatProjection(player, statProjections);
+  if (statProjection && (secondsRemaining === 3600 || player.projection === null)) {
     return simulateFromStatProjection(player, statProjection, secondsRemaining, week);
   }
 
-  if (player.projection === null) {
-    return null;
-  }
-
+  const pointProjection = player.projection ?? fallbackPointProjection(player, statProjection);
   const remainingFraction = secondsRemaining / 3600;
   const actualPoints = player.score ?? 0;
-  const blendedFullGameMean = player.projection * remainingFraction + actualPoints * (1 - remainingFraction);
+  const blendedFullGameMean = pointProjection * remainingFraction + actualPoints * (1 - remainingFraction);
   const remainingMean = blendedFullGameMean * remainingFraction;
-  const remainingDeviation = Math.abs(player.projection) / 2.5 * remainingFraction;
-  const random = createMflStyleRandom(player.id, week);
+  const remainingDeviation = Math.abs(pointProjection) / 2.5 * remainingFraction;
 
-  const scoringComponents = 8;
-  return Array.from({ length: WIN_PROBABILITY_SIMULATIONS }, () => {
-    let remainingPoints = 0;
-    for (let component = 0; component < scoringComponents; component += 1) {
-      remainingPoints += random.normal(
-        remainingMean / scoringComponents,
-        remainingDeviation / Math.sqrt(scoringComponents),
-      );
-    }
-    return Math.max(0, remainingPoints);
-  });
+  return simulateRemainingFromMean(player.id, week, remainingMean, remainingDeviation);
+}
+
+function simulateAnonymousRemainingStarters(
+  teamId: string,
+  week: number,
+  playing: number,
+  yetToPlay: number,
+): number[] {
+  const remainingMean = playing * 0.5 * LEAGUE_AVERAGE_STARTER_POINTS + yetToPlay * LEAGUE_AVERAGE_STARTER_POINTS;
+  const remainingDeviation = Math.abs(remainingMean) / 2.5;
+  return simulateRemainingFromMean(`${teamId}:remaining`, week, remainingMean, remainingDeviation);
 }
 
 function simulateTeamFinalScores(team: MatchupTeam, week: number, statProjections: MflStatProjections): number[] | null {
@@ -720,18 +814,21 @@ function simulateTeamFinalScores(team: MatchupTeam, week: number, statProjection
   }
 
   const starters = team.players.filter((entry) => entry.status === 'starter');
-  const remainingStarterCount = (team.summary.playing ?? 0) + (team.summary.yetToPlay ?? 0);
+  const playing = team.summary.playing ?? 0;
+  const yetToPlay = team.summary.yetToPlay ?? 0;
+  const remainingStarterCount = playing + yetToPlay;
+  const totals = Array(WIN_PROBABILITY_SIMULATIONS).fill(team.score) as number[];
+
   if (remainingStarterCount > 0 && starters.length === 0) {
-    return null;
+    const remainingPoints = simulateAnonymousRemainingStarters(team.teamId, week, playing, yetToPlay);
+    for (let index = 0; index < WIN_PROBABILITY_SIMULATIONS; index += 1) {
+      totals[index] += remainingPoints[index];
+    }
+    return totals;
   }
 
-  const totals = Array(WIN_PROBABILITY_SIMULATIONS).fill(team.score) as number[];
   for (const player of starters) {
     const remainingPoints = simulatePlayerRemainingPoints(player, week, statProjections);
-    if (!remainingPoints) {
-      return null;
-    }
-
     for (let index = 0; index < WIN_PROBABILITY_SIMULATIONS; index += 1) {
       totals[index] += remainingPoints[index];
     }
@@ -1202,8 +1299,16 @@ export async function loadScoresPageState(
 
     if (selectedWeek === currentWeek) {
       const liveScoring = toRecord(toRecord(livePayload)?.liveScoring);
-      const statProjections = await loadMflStatProjections(selectedWeek, sessionCookieValue);
-      const liveMatchups = parseMatchupCards(liveScoring, namesById, playersById, projectionsById, 'live', selectedWeek, statProjections);
+      const [statProjections, weekProjectedScoresResponse] = await Promise.all([
+        loadMflStatProjections(selectedWeek, sessionCookieValue),
+        fetchMflExport('projectedScores', { JSON: '1', W: String(selectedWeek) }, { sessionCookieValue, cache: 'no-store' }),
+      ]);
+      const weekProjectedScoresPayload = weekProjectedScoresResponse.ok
+        ? await weekProjectedScoresResponse.json().catch(() => null)
+        : null;
+      const weekProjectionsById = parseProjectedScores(weekProjectedScoresPayload);
+      const liveProjectionsById = weekProjectionsById.size > 0 ? weekProjectionsById : projectionsById;
+      const liveMatchups = parseMatchupCards(liveScoring, namesById, playersById, liveProjectionsById, 'live', selectedWeek, statProjections);
 
       if (liveMatchups) {
         return buildSuccessState({

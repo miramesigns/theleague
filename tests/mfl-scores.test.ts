@@ -436,10 +436,19 @@ test('loadScoreboardState defaults to the current live week and uses live scorin
     assert.equal(result.matchups[0].home.summary.played, 1);
     assert.equal(result.matchups[0].home.summary.playing, 1);
     assert.equal(result.matchups[0].home.summary.yetToPlay, 1);
-    assert.equal(result.matchups[0].home.summary.winChance, null);
-    assert.equal(result.matchups[0].away.summary.winChance, null);
+    assert.notEqual(result.matchups[0].home.summary.winChance, null);
+    assert.notEqual(result.matchups[0].away.summary.winChance, null);
+    if (result.matchups[0].home.summary.winChance === null || result.matchups[0].away.summary.winChance === null) {
+      throw new Error('Expected live win chances even without projectedScores.');
+    }
+    assert.equal(result.matchups[0].home.summary.winChance + result.matchups[0].away.summary.winChance, 100);
+    assert.equal(result.matchups[0].home.summary.winChanceMode, 'estimated');
     assert.equal(result.matchups[0].home.record, null);
     assert.equal(requests.some((request) => request.type === 'leagueStandings'), true);
+    assert.equal(
+      requests.some((request) => request.type === 'projectedScores' && request.week === '8'),
+      true,
+    );
   } finally {
     globalThis.fetch = originalFetch;
     restoreEnv();
@@ -814,4 +823,115 @@ test('starter phase counts use per-player game clocks over stale franchise total
   assert.equal(summary.played, 8);
   assert.equal(summary.playing, 1);
   assert.equal(summary.yetToPlay, 1);
+});
+
+test('live win chance falls back when point projections are missing for playing starters', () => {
+  const mkPlayer = (
+    id: string,
+    position: string,
+    score: number,
+    gameSecondsRemaining: number | null,
+  ): MatchupTeam['players'][number] => ({
+    id,
+    name: id,
+    position,
+    nflTeam: position === 'Def' ? 'NYJ' : 'WAS',
+    status: 'starter',
+    score,
+    projection: null,
+    gameSecondsRemaining,
+  });
+
+  const home: MatchupTeam = {
+    teamId: '0001',
+    teamName: 'Shadow',
+    teamAbbrev: 'SHD',
+    record: '4-5',
+    isHome: true,
+    score: 102.5,
+    result: null,
+    status: 'Live',
+    players: [
+      ...Array.from({ length: 8 }, (_, index) => mkPlayer(`done-${index}`, 'WR', 10, 0)),
+      mkPlayer('live-rb', 'RB', 8.5, 1200),
+      mkPlayer('pending-te', 'TE', 0, 3600),
+    ],
+    summary: {
+      starterTotal: 10,
+      played: 8,
+      playing: 1,
+      yetToPlay: 1,
+      winChance: null,
+      winChanceMode: 'unavailable',
+    },
+  };
+
+  const away: MatchupTeam = {
+    teamId: '0004',
+    teamName: 'The Ashy Elbows',
+    teamAbbrev: 'Elbows',
+    record: '7-2',
+    isHome: false,
+    score: 140.0,
+    result: null,
+    status: 'Live',
+    players: [
+      ...Array.from({ length: 5 }, (_, index) => mkPlayer(`away-done-${index}`, 'WR', 18, 0)),
+      ...Array.from({ length: 5 }, (_, index) => mkPlayer(`away-live-${index}`, 'RB', 12, 900)),
+    ],
+    summary: {
+      starterTotal: 10,
+      played: 5,
+      playing: 5,
+      yetToPlay: 0,
+      winChance: null,
+      winChanceMode: 'unavailable',
+    },
+  };
+
+  const chances = estimateMflStyleWinChances(home, away, 11);
+  assert.notEqual(chances.home, null);
+  assert.notEqual(chances.away, null);
+  if (chances.home === null || chances.away === null) throw new Error('Expected fallback win chances.');
+  assert.equal(chances.home + chances.away, 100);
+  assert.ok(chances.away > chances.home);
+});
+
+test('live win chance treats null game clocks as yet-to-play instead of aborting', () => {
+  const team = (teamId: string, score: number, projection: number | null): MatchupTeam => ({
+    teamId,
+    teamName: teamId,
+    teamAbbrev: null,
+    record: null,
+    isHome: teamId === 'home',
+    score,
+    result: null,
+    status: 'Live',
+    players: [
+      {
+        id: `${teamId}-1`,
+        name: `${teamId}-1`,
+        position: 'WR',
+        nflTeam: 'DAL',
+        status: 'starter',
+        score: 0,
+        projection,
+        gameSecondsRemaining: null,
+      },
+    ],
+    summary: {
+      starterTotal: 1,
+      played: 0,
+      playing: 0,
+      yetToPlay: 1,
+      winChance: null,
+      winChanceMode: 'unavailable',
+    },
+  });
+
+  const chances = estimateMflStyleWinChances(team('home', 20, null), team('away', 10, 14), 8);
+  assert.notEqual(chances.home, null);
+  assert.notEqual(chances.away, null);
+  if (chances.home === null || chances.away === null) throw new Error('Expected win chances with null clocks.');
+  assert.equal(chances.home + chances.away, 100);
 });
